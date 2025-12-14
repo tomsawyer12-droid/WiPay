@@ -5,13 +5,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Garuga Spot</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="css/style.css">
 </head>
 
 <body>
     <div class="container">
         <header>
-            <img src="Wifi-Icon.png" alt="Wi-Fi" class="wifi-icon-img">
+            <img src="img/Wifi-Icon.png" alt="Wi-Fi" class="wifi-icon-img">
             <h1>Garuga Spot</h1>
             <p>Stay online, Stay informed</p>
         </header>
@@ -215,80 +215,64 @@
                 }
             });
 
-            async function simulatePaymentSuccess(txId, phone, pkgId) {
-                showMessage('Waiting for Payment...', 'info');
-                await fetch('/api/payment-webhook', {
+
+            function startPolling(txRef, phone, pkgId) {
+                showMessage(`Checking payment status...`, 'info');
+
+                let checkCount = 0;
+                const maxChecks = 60; // 5 mins total (5s * 60)
+
+                const intervalId = setInterval(async () => {
+                    checkCount++;
+                    if (checkCount > maxChecks) {
+                        clearInterval(intervalId);
+                        showMessage('Payment timed out or taking too long. Check SMS.', 'error');
+                        return;
+                    }
+
+                    try {
+                        const res = await fetch('/api/check-payment-status', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ transaction_ref: txRef })
+                        });
+                        const data = await res.json();
+
+                        if (data.status === 'SUCCESS') {
+                            clearInterval(intervalId);
+                            showMessage('Payment Confirmed! Voucher sent via SMS.', 'success');
+                            // Optional: Automatically connect?
+                            // checkConnection(phone);
+                        }
+                    } catch (e) {
+                        console.error('Polling error', e);
+                    }
+                }, 5000); // Check every 5 seconds
+            }
+
+            async function checkConnection(phone) {
+                const res = await fetch('/api/connect', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        transaction_id: txId,
-                        phone_number: phone,
-                        package_id: pkgId,
-                        status: 'SUCCESS'
-                    })
+                    body: JSON.stringify({ phone_number: phone })
                 });
-                checkConnection(phone);
-
-
-
-
-                function startPolling(txRef, phone, pkgId) {
-                    showMessage(`Checking payment status...`, 'info');
-
-                    let checkCount = 0;
-                    const maxChecks = 60; // 5 mins total (5s * 60)
-
-                    const intervalId = setInterval(async () => {
-                        checkCount++;
-                        if (checkCount > maxChecks) {
-                            clearInterval(intervalId);
-                            showMessage('Payment timed out or taking too long. Check SMS.', 'error');
-                            return;
-                        }
-
-                        try {
-                            const res = await fetch('/api/check-payment-status', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ transaction_ref: txRef })
-                            });
-                            const data = await res.json();
-
-                            if (data.status === 'SUCCESS') {
-                                clearInterval(intervalId);
-                                showMessage('Payment Confirmed! Voucher sent via SMS.', 'success');
-                                // Optional: Automatically connect?
-                                // checkConnection(phone);
-                            }
-                        } catch (e) {
-                            console.error('Polling error', e);
-                        }
-                    }, 5000); // Check every 5 seconds
+                const data = await res.json();
+                if (data.status === 'connected') {
+                    showMessage(`Connected! Redirecting...`, 'success');
+                } else {
+                    showMessage(data.message, 'error');
                 }
+            }
 
-                async function checkConnection(phone) {
-                    const res = await fetch('/api/connect', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone_number: phone })
-                    });
-                    const data = await res.json();
-                    if (data.status === 'connected') {
-                        showMessage(`Connected! Redirecting...`, 'success');
-                    } else {
-                        showMessage(data.message, 'error');
-                    }
-                }
-
-                function showMessage(msg, type) {
-                    statusMessage.textContent = msg;
-                    statusMessage.className = `status-message ${type}`;
-                    statusMessage.classList.remove('hidden');
-                    setTimeout(() => {
-                        statusMessage.classList.add('hidden');
-                    }, 5000);
-                }
-            });
+            function showMessage(msg, type) {
+                statusMessage.textContent = msg;
+                statusMessage.className = `status-message ${type}`;
+                statusMessage.classList.remove('hidden');
+                setTimeout(() => {
+                    statusMessage.classList.add('hidden');
+                }, 5000);
+            }
+        });
     </script>
 </body>
 
