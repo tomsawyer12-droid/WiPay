@@ -83,4 +83,4 @@ To deploy on a Mikrotik or other router:
 3.  Configure the router's Walled Garden to allow access to your server's IP/Domain and the Relworx API.
 
 ---
-*Maintained by WiPay Team.*
+*Maintained by Garuga IT Team.*
