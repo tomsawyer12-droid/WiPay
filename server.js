@@ -1,6 +1,8 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 const app = express();
@@ -14,11 +16,8 @@ app.use(cors());
 app.use(bodyParser.json());
 
 // Redirect root to dashboard
-app.get('/', (req, res, next) => {
-    // If it's a browser request (accepts html), redirect. 
-    // Otherwise let express.static handle it (though usually root IS browser)
-    res.redirect('/dashboard.html');
-});
+// Redirect root logic - removed to show index.html by default
+// app.get('/', (req, res) => { res.redirect('/dashboard.html'); });
 
 app.use(express.static('.')); // Serve static files (index.html, style.css)
 
@@ -53,9 +52,23 @@ const UGSMS_API_URL = 'https://ugsms.com/v1/sms/send';
 const UGSMS_USERNAME = process.env.UGSMS_USERNAME;
 const UGSMS_PASSWORD = process.env.UGSMS_PASSWORD;
 
-// --- Helper Functions (Simulations & Utils) ---
+const JWT_SECRET = process.env.JWT_SECRET || 'your_super_secret_key_change_this';
 
-async function sendSMS(phoneNumber, message) {
+// --- Auth Middleware ---
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+    if (!token) return res.sendStatus(401); // Unauthorized
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.sendStatus(403); // Forbidden
+        req.user = user;
+        next();
+    });
+}
+
+async function sendSMS(phoneNumber, message, adminId = null) {
     let status = 'pending';
     let apiResponse = null;
 
@@ -93,8 +106,8 @@ async function sendSMS(phoneNumber, message) {
     // Log to DB
     try {
         await db.query(
-            'INSERT INTO sms_logs (phone_number, message, status, response) VALUES (?, ?, ?, ?)',
-            [phoneNumber, message, status, apiResponse]
+            'INSERT INTO sms_logs (phone_number, message, status, response, admin_id) VALUES (?, ?, ?, ?, ?)',
+            [phoneNumber, message, status, apiResponse, adminId]
         );
     } catch (dbErr) {
         console.error('[SMS] Failed to log to DB:', dbErr);
@@ -116,18 +129,81 @@ function grantAccess(phoneNumber, durationHours) {
 
 // --- API Endpoints ---
 
-// 1. Get Packages from DB
+// 0. Login API (Admin)
+app.post('/api/login', async (req, res) => {
+    const { username, password } = req.body;
+    try {
+        const [users] = await db.query('SELECT * FROM admins WHERE username = ?', [username]);
+        if (users.length === 0) return res.status(400).json({ error: 'User not found' });
+
+        const user = users[0];
+        const validPass = await bcrypt.compare(password, user.password_hash);
+        if (!validPass) return res.status(400).json({ error: 'Invalid password' });
+
+        // Create Token
+        const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
+        res.json({ token, username: user.username });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// 1. Change Password API
+app.post('/api/admin/change-password', authenticateToken, async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: 'Current and New passwords are required' });
+    }
+
+    try {
+        // Fetch Admin
+        const [admins] = await db.query('SELECT * FROM admins WHERE id = ?', [req.user.id]);
+        if (admins.length === 0) return res.status(404).json({ error: 'User not found' });
+
+        const admin = admins[0];
+
+        // Verify Current
+        const validPass = await bcrypt.compare(currentPassword, admin.password_hash);
+        if (!validPass) return res.status(400).json({ error: 'Incorrect current password' });
+
+        // Hash New
+        const salt = await bcrypt.genSalt(10);
+        const newHash = await bcrypt.hash(newPassword, salt);
+
+        // Update DB
+        await db.query('UPDATE admins SET password_hash = ? WHERE id = ?', [newHash, req.user.id]);
+
+        res.json({ message: 'Password updated successfully' });
+    } catch (err) {
+        console.error('Change Pass Error:', err);
+        res.status(500).json({ error: 'Failed to change password' });
+    }
+});
+
+// 2. Get Packages from DB
 app.get('/api/packages', async (req, res) => {
+    const { admin_id } = req.query;
+
+    if (!admin_id) {
+        // STRICT MODE: Do not show packages if no admin is specified
+        // This prevents "leaking" packages on the default homepage
+        return res.json([]);
+    }
+
     try {
         // Fetch packages that have at least one voucher available
-        // Group by all selected columns to ensure compatibility with ONLY_FULL_GROUP_BY
-        const [rows] = await db.query(`
+        // If admin_id is provided, filter by it
+        let query = `
             SELECT p.id, p.name, p.price, p.validity_hours AS duration_hours
             FROM packages p
             JOIN vouchers v ON p.id = v.package_id
+            WHERE p.admin_id = ?
             GROUP BY p.id, p.name, p.price, p.validity_hours
             HAVING COUNT(v.id) > 0
-        `);
+        `;
+
+        const [rows] = await db.query(query, [admin_id]);
         res.json(rows);
     } catch (err) {
         console.error('Database error:', err);
@@ -172,9 +248,9 @@ app.post('/api/purchase', async (req, res) => {
 
         // Insert Pending Transaction
         await db.query(`
-            INSERT INTO transactions (transaction_ref, phone_number, amount, package_id, status)
-            VALUES (?, ?, ?, ?, 'pending')
-        `, [reference, formattedPhone, selectedPackage.price, package_id]);
+            INSERT INTO transactions (transaction_ref, phone_number, amount, package_id, status, admin_id)
+            VALUES (?, ?, ?, ?, 'pending', ?)
+        `, [reference, formattedPhone, selectedPackage.price, package_id, selectedPackage.admin_id]);
 
         // Call Relworx API
         const response = await fetch(RELWORX_API_URL, {
@@ -261,7 +337,7 @@ app.post('/api/payment-webhook', async (req, res) => {
                     const message = `Payment Received! Your voucher code for ${selectedPackage.name} is: ${voucher.code}. Thank you for using Garuga Spot.`;
 
                     // Don't await this if you want the webhook to respond fast, but usually it's fine
-                    sendSMS(phone_number, message).then(success => {
+                    sendSMS(phone_number, message, selectedPackage.admin_id).then(success => {
                         console.log(`[VOUCHER] SMS sent to ${phone_number}: ${success ? 'OK' : 'FAIL'}`);
                     });
 
@@ -287,12 +363,12 @@ app.post('/api/payment-webhook', async (req, res) => {
 // --- ADMIN CREATION API ---
 
 // Create Category
-app.post('/api/admin/categories', async (req, res) => {
+app.post('/api/admin/categories', authenticateToken, async (req, res) => {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required' });
 
     try {
-        const [result] = await db.query('INSERT INTO categories (name) VALUES (?)', [name]);
+        const [result] = await db.query('INSERT INTO categories (name, admin_id) VALUES (?, ?)', [name, req.user.id]);
         res.json({ id: result.insertId, name, message: 'Category created' });
     } catch (err) {
         console.error('Create Category Error:', err);
@@ -301,9 +377,9 @@ app.post('/api/admin/categories', async (req, res) => {
 });
 
 // Get Categories
-app.get('/api/admin/categories', async (req, res) => {
+app.get('/api/admin/categories', authenticateToken, async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT * FROM categories ORDER BY created_at DESC');
+        const [rows] = await db.query('SELECT * FROM categories WHERE admin_id = ? ORDER BY created_at DESC', [req.user.id]);
         res.json(rows);
     } catch (err) {
         res.status(500).json({ error: 'Failed to fetch categories' });
@@ -311,7 +387,7 @@ app.get('/api/admin/categories', async (req, res) => {
 });
 
 // Create Package
-app.post('/api/admin/packages', async (req, res) => {
+app.post('/api/admin/packages', authenticateToken, async (req, res) => {
     const { name, price, validity_hours, category_id, data_limit_mb } = req.body;
 
     // Basic validation
@@ -321,9 +397,9 @@ app.post('/api/admin/packages', async (req, res) => {
 
     try {
         await db.query(`
-            INSERT INTO packages (category_id, name, price, validity_hours, data_limit_mb, created_at)
-            VALUES (?, ?, ?, ?, ?, NOW())
-        `, [category_id, name, price, validity_hours, data_limit_mb || 0]); // Default 0MB limit
+            INSERT INTO packages (category_id, name, price, validity_hours, data_limit_mb, created_at, admin_id)
+            VALUES (?, ?, ?, ?, ?, NOW(), ?)
+        `, [category_id, name, price, validity_hours, data_limit_mb || 0, req.user.id]); // Default 0MB limit
 
         res.json({ message: 'Package created successfully' });
     } catch (err) {
@@ -333,14 +409,15 @@ app.post('/api/admin/packages', async (req, res) => {
 });
 
 // Get Packages (Admin - All packages with Category Name)
-app.get('/api/admin/packages', async (req, res) => {
+app.get('/api/admin/packages', authenticateToken, async (req, res) => {
     try {
         const [rows] = await db.query(`
             SELECT p.*, c.name as category_name 
             FROM packages p 
             LEFT JOIN categories c ON p.category_id = c.id 
+            WHERE p.admin_id = ?
             ORDER BY p.created_at DESC
-        `);
+        `, [req.user.id]);
         res.json(rows);
     } catch (err) {
         console.error('Fetch Packages Error:', err);
@@ -350,7 +427,7 @@ app.get('/api/admin/packages', async (req, res) => {
 
 // --- VOUCHER MANAGEMENT ---
 // Import Vouchers (CSV/JSON Bulk)
-app.post('/api/admin/vouchers/import', async (req, res) => {
+app.post('/api/admin/vouchers/import', authenticateToken, async (req, res) => {
     const { package_id, vouchers } = req.body; // Changed from 'codes' to 'vouchers' generic name, but keeping compat if possible
 
     // Support legacy 'codes' array of strings OR new 'vouchers' array of objects {code, comment}
@@ -362,7 +439,7 @@ app.post('/api/admin/vouchers/import', async (req, res) => {
 
     try {
         // Bulk insert
-        const placeholder = inputList.map(() => '(?, ?, ?, ?)').join(', ');
+        const placeholder = inputList.map(() => '(?, ?, ?, ?, ?)').join(', ');
         const values = [];
 
         inputList.forEach(item => {
@@ -377,10 +454,10 @@ app.post('/api/admin/vouchers/import', async (req, res) => {
                 comment = item.comment || null;
                 package_ref = item.package_ref || null;
             }
-            values.push(package_id, code, comment, package_ref);
+            values.push(package_id, code, comment, package_ref, req.user.id);
         });
 
-        const query = `INSERT IGNORE INTO vouchers (package_id, code, comment, package_ref) VALUES ${placeholder}`;
+        const query = `INSERT IGNORE INTO vouchers (package_id, code, comment, package_ref, admin_id) VALUES ${placeholder}`;
         const [result] = await db.query(query, values);
 
         res.json({ message: `Import complete. Added ${result.affectedRows} new vouchers (skipped ${inputList.length - result.affectedRows} duplicates).` });
@@ -391,17 +468,17 @@ app.post('/api/admin/vouchers/import', async (req, res) => {
 });
 
 // Get Vouchers (Admin)
-app.get('/api/admin/vouchers', async (req, res) => {
+app.get('/api/admin/vouchers', authenticateToken, async (req, res) => {
     try {
         // Get available vouchers with package name, newest first
         const [rows] = await db.query(`
             SELECT v.id, v.code, v.comment, v.package_ref, v.is_used, p.name as package_name, v.created_at
             FROM vouchers v
             JOIN packages p ON v.package_id = p.id
-            WHERE v.is_used = FALSE
+            WHERE v.is_used = FALSE AND v.admin_id = ?
             ORDER BY v.created_at DESC
             LIMIT 100
-        `);
+        `, [req.user.id]);
         res.json(rows);
     } catch (err) {
         console.error('Fetch Vouchers Error:', err);
@@ -410,7 +487,7 @@ app.get('/api/admin/vouchers', async (req, res) => {
 });
 
 // Bulk Delete Vouchers
-app.delete('/api/admin/vouchers', async (req, res) => {
+app.delete('/api/admin/vouchers', authenticateToken, async (req, res) => {
     const { ids } = req.body;
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
         return res.status(400).json({ error: 'No IDs provided' });
@@ -418,7 +495,8 @@ app.delete('/api/admin/vouchers', async (req, res) => {
 
     try {
         const placeholders = ids.map(() => '?').join(',');
-        await db.query(`DELETE FROM vouchers WHERE id IN (${placeholders})`, ids);
+        // IMPORTANT: Verify these vouchers belong to this admin
+        await db.query(`DELETE FROM vouchers WHERE id IN (${placeholders}) AND admin_id = ?`, [...ids, req.user.id]);
         res.json({ message: `Deleted ${ids.length} vouchers` });
     } catch (err) {
         console.error('Delete Vouchers Error:', err);
@@ -428,7 +506,10 @@ app.delete('/api/admin/vouchers', async (req, res) => {
 
 
 async function getSMSBalance() {
-    if (!UGSMS_USERNAME || !UGSMS_PASSWORD) return null;
+    if (!UGSMS_USERNAME || !UGSMS_PASSWORD) {
+        console.log('[SMS Balance] Credentials missing.');
+        return null;
+    }
 
     try {
         const params = new URLSearchParams({
@@ -437,27 +518,38 @@ async function getSMSBalance() {
         });
 
         const url = `https://ugsms.com/v1/balance?${params.toString()}`;
-        // console.log('[SMS Balance] Fetching:', url.replace(UGSMS_PASSWORD, '***'));
+        console.log('[SMS Balance] Fetching...');
 
-        const response = await fetch(url, { method: 'GET' });
+        // Add 5s timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+        const response = await fetch(url, {
+            method: 'GET',
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
 
         if (response.ok) {
             const data = await response.json();
+            console.log('[SMS Balance] Success:', data.balance);
             return data.balance;
+        } else {
+            console.error('[SMS Balance] Failed:', response.status);
         }
     } catch (e) {
-        // console.error('[SMS Balance] Error:', e.message);
+        console.error('[SMS Balance] Error:', e.message);
     }
     return null; // Fallback to null (N/A)
 }
 
-// --- ADMIN STATS ENDPOINT ---
-app.get('/api/admin/stats', async (req, res) => {
+// --- ADMIN STATS ENDPOINT (Internal Data Only) ---
+app.get('/api/admin/stats', authenticateToken, async (req, res) => {
+    // console.log(`[Stats] Request received for Admin ID: ${req.user.id}`);
     try {
-        // 0. SMS Balance
-        const smsBalance = await getSMSBalance();
-
-        // 1. Transaction Stats (Daily, Weekly, Monthly, Yearly)
+        // 1. Transaction Stats (Daily, Weekly, Monthly, Yearly) - FILTERED BY ADMIN
+        // Since transactions might not have admin_id populated correctly for OLD data if we didn't migrate meticulously,
+        // we'll assume we did.
         const [transStats] = await db.query(`
             SELECT 
                 COALESCE(SUM(CASE WHEN status = 'success' AND DATE(created_at) = CURDATE() THEN amount ELSE 0 END), 0) as daily_revenue,
@@ -467,10 +559,15 @@ app.get('/api/admin/stats', async (req, res) => {
                 COALESCE(SUM(CASE WHEN status = 'success' THEN amount ELSE 0 END), 0) as total_revenue,
                 COUNT(CASE WHEN date(created_at) = CURDATE() THEN 1 END) as daily_trans_count
             FROM transactions
-        `);
+            WHERE admin_id = ?
+        `, [req.user.id]);
 
         // 1.5 Calculate Net Balance (Revenue - Withdrawals)
-        const [withdrawStats] = await db.query('SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals');
+        const [withdrawStats] = await db.query('SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals WHERE admin_id = ?', [req.user.id]);
+
+        console.log('[Stats] Transactions Query Result:', transStats[0]);
+        console.log('[Stats] Withdrawals Query Result:', withdrawStats[0]);
+
         const totalRevenue = Number(transStats[0].total_revenue);
         const totalWithdrawn = Number(withdrawStats[0].total_withdrawn);
         const netBalance = totalRevenue - totalWithdrawn;
@@ -478,33 +575,46 @@ app.get('/api/admin/stats', async (req, res) => {
         // 2. Count Stats
         const [counts] = await db.query(`
             SELECT 
-                (SELECT COUNT(*) FROM categories) as categories_count,
-                (SELECT COUNT(*) FROM packages) as packages_count,
-                (SELECT COUNT(*) FROM vouchers WHERE is_used = 0) as vouchers_count,
-                (SELECT COUNT(*) FROM vouchers WHERE is_used = 1) as bought_vouchers_count,
-                (SELECT COUNT(*) FROM transactions WHERE status = 'success') as payments_count
-        `);
+                (SELECT COUNT(*) FROM categories WHERE admin_id = ?) as categories_count,
+                (SELECT COUNT(*) FROM packages WHERE admin_id = ?) as packages_count,
+                (SELECT COUNT(*) FROM vouchers WHERE is_used = 0 AND admin_id = ?) as vouchers_count,
+                (SELECT COUNT(*) FROM vouchers WHERE is_used = 1 AND admin_id = ?) as bought_vouchers_count,
+                (SELECT COUNT(*) FROM transactions WHERE status = 'success' AND admin_id = ?) as payments_count
+        `, [req.user.id, req.user.id, req.user.id, req.user.id, req.user.id]);
+
         // 3. Weekly Transaction Graph Data (Last 7 Days)
         const [graphData] = await db.query(`
             SELECT DATE_FORMAT(created_at, '%a') as day_name, SUM(amount) as total
             FROM transactions 
-            WHERE status = 'success' AND created_at >= DATE(NOW()) - INTERVAL 7 DAY
+            WHERE status = 'success' AND created_at >= DATE(NOW()) - INTERVAL 7 DAY AND admin_id = ?
             GROUP BY day_name
             ORDER BY created_at
-        `);
+        `, [req.user.id]);
 
-        res.json({
-            sms_balance: smsBalance,
+        const responseData = {
+            // sms_balance: smsBalance, // REMOVED
             finance: {
                 ...transStats[0],
                 total_revenue: netBalance // Override with Net Balance
             },
             counts: counts[0],
             graph: graphData
-        });
+        };
+        // console.log('[Stats] Sending Response:', responseData);
+        res.json(responseData);
     } catch (err) {
         console.error('Stats Error:', err);
         res.status(500).json({ error: 'Failed to fetch stats' });
+    }
+});
+
+// --- SMS BALANCE ENDPOINT (Separate) ---
+app.get('/api/admin/sms-balance', authenticateToken, async (req, res) => {
+    try {
+        const balance = await getSMSBalance();
+        res.json({ balance });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch SMS balance' });
     }
 });
 
@@ -542,9 +652,9 @@ app.get('/api/debug/sessions', (req, res) => {
 });
 
 // --- SMS LOGS API ---
-app.get('/api/admin/sms-logs', async (req, res) => {
+app.get('/api/admin/sms-logs', authenticateToken, async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT * FROM sms_logs ORDER BY created_at DESC LIMIT 100');
+        const [rows] = await db.query('SELECT * FROM sms_logs WHERE admin_id = ? ORDER BY created_at DESC LIMIT 100', [req.user.id]);
         res.json(rows);
     } catch (err) {
         console.error('Fetch SMS Logs Error:', err);
@@ -552,7 +662,7 @@ app.get('/api/admin/sms-logs', async (req, res) => {
     }
 });
 // --- WITHDRAWAL API ---
-app.post('/api/admin/withdraw', async (req, res) => {
+app.post('/api/admin/withdraw', authenticateToken, async (req, res) => {
     const { amount, phone_number, description } = req.body;
 
     if (!amount || !phone_number) {
@@ -566,8 +676,8 @@ app.post('/api/admin/withdraw', async (req, res) => {
     try {
         // --- 1. Enforce Balance Check ---
         // Calculate current Net Balance
-        const [transStats] = await db.query("SELECT COALESCE(SUM(amount), 0) as total_revenue FROM transactions WHERE status = 'success'");
-        const [withdrawStats] = await db.query("SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals");
+        const [transStats] = await db.query("SELECT COALESCE(SUM(amount), 0) as total_revenue FROM transactions WHERE status = 'success' AND admin_id = ?", [req.user.id]);
+        const [withdrawStats] = await db.query("SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals WHERE admin_id = ?", [req.user.id]);
 
         const currentBalance = Number(transStats[0].total_revenue) - Number(withdrawStats[0].total_withdrawn);
 
@@ -608,8 +718,8 @@ app.post('/api/admin/withdraw', async (req, res) => {
         if (response.ok) {
             // Save withdrawal to DB for balance tracking
             await db.query(
-                'INSERT INTO withdrawals (phone_number, amount, reference, description) VALUES (?, ?, ?, ?)',
-                [phone_number, amount, reference, description]
+                'INSERT INTO withdrawals (phone_number, amount, reference, description, admin_id) VALUES (?, ?, ?, ?, ?)',
+                [phone_number, amount, reference, description, req.user.id]
             );
 
             res.json({ success: true, data: result });
@@ -623,7 +733,8 @@ app.post('/api/admin/withdraw', async (req, res) => {
 });
 
 // --- SELL VOUCHER API ---
-app.post('/api/admin/sell-voucher', async (req, res) => {
+// Updated for Multi-Tenancy
+app.post('/api/admin/sell-voucher', authenticateToken, async (req, res) => {
     const { package_id, phone_number } = req.body;
 
     if (!package_id || !phone_number) {
@@ -631,13 +742,10 @@ app.post('/api/admin/sell-voucher', async (req, res) => {
     }
 
     try {
-        // 1. Find an available voucher for this package
-        // Assumption: 'is_used' column exists based on typical schema, if not check schema output.
-        // Based on typical schema: status='active' or is_used=0
-        // Let's assume is_used = 0 
+        // 1. Find an available voucher for this package AND this admin
         const [vouchers] = await db.query(
-            'SELECT * FROM vouchers WHERE package_id = ? AND is_used = 0 LIMIT 1',
-            [package_id]
+            'SELECT * FROM vouchers WHERE package_id = ? AND is_used = 0 AND admin_id = ? LIMIT 1',
+            [package_id, req.user.id]
         );
 
         if (vouchers.length === 0) {
@@ -646,19 +754,16 @@ app.post('/api/admin/sell-voucher', async (req, res) => {
 
         const voucher = vouchers[0];
 
-        // 2. Mark as used (User requested: "mark it as used" instead of delete)
-        // The count will still decrease because we filter by is_used=0 in stats.
+        // 2. Mark as used
         await db.query('UPDATE vouchers SET is_used = 1, used_at = NOW() WHERE id = ?', [voucher.id]);
 
         // 3. Send SMS
         const message = `Your WiPay Voucher Code is: ${voucher.code}. Enjoy!`;
-        const smsSuccess = await sendSMS(phone_number, message);
+        const smsSuccess = await sendSMS(phone_number, message, req.user.id);
 
         if (smsSuccess) {
             res.json({ success: true, message: 'Voucher sent successfully', code: voucher.code });
         } else {
-            // Rollback usage if SMS failed? Or just returning warning.
-            // For now, keep it marked used to avoid double spend, admin can check logs.
             res.status(200).json({ success: true, message: 'Voucher assigned but SMS failed. Check logs.', code: voucher.code, sms_failed: true });
         }
 

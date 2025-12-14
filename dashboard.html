@@ -61,10 +61,10 @@
                 </div>
 
                 <div class="header-right">
-                    <span>WELCOME, PRINCE</span>
+                    <span id="welcomeMsg" style="text-transform: uppercase;">WELCOME, ADMIN</span>
                     <a href="/" target="_blank">VIEW SITE</a> /
-                    <a href="#">CHANGE PASSWORD</a> /
-                    <a href="#" onclick="window.location.reload()">LOG OUT</a>
+                    <a href="#" onclick="openDashModal('changePassModal')">CHANGE PASSWORD</a> /
+                    <a href="#" id="logoutLink">LOG OUT</a>
                     <span class="theme-toggle">◐</span>
                 </div>
             </header>
@@ -338,6 +338,24 @@
         </div>
     </div>
 
+    <!-- Change Password Modal -->
+    <div id="changePassModal" class="dashboard-modal hidden">
+        <div class="dashboard-modal-content">
+            <h3>Change Password</h3>
+            <input type="password" id="currentPass" placeholder="Current Password"
+                style="width: 100%; padding: 10px; margin-bottom: 10px;">
+            <input type="password" id="newPass" placeholder="New Password"
+                style="width: 100%; padding: 10px; margin-bottom: 10px;">
+            <input type="password" id="confirmPass" placeholder="Confirm New Password"
+                style="width: 100%; padding: 10px; margin-bottom: 15px;">
+
+            <div class="modal-actions">
+                <button onclick="submitChangePass()" class="btn-save">Update</button>
+                <button onclick="closeDashModal('changePassModal')" class="btn-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Success Modal -->
     <div id="successModal" class="dashboard-modal hidden">
         <div class="dashboard-modal-content success-content">
@@ -361,6 +379,42 @@
     </div>
 
     <script>
+        // --- Auth Helper ---
+        async function fetchAuth(url, options = {}) {
+            const token = localStorage.getItem('wipay_token');
+            if (!token) {
+                window.location.href = 'login.html';
+                return Promise.reject('No token');
+            }
+
+            const headers = {
+                'Authorization': 'Bearer ' + token,
+                ...options.headers
+            };
+            const newOptions = { ...options, headers };
+
+            const response = await fetch(url, newOptions);
+
+            if (response.status === 401 || response.status === 403) {
+                localStorage.removeItem('wipay_token');
+                window.location.href = 'login.html';
+                return Promise.reject('Unauthorized');
+            }
+
+            return response;
+        }
+
+        // --- Logout ---
+        // --- Logout ---
+        const logoutLink = document.getElementById('logoutLink');
+        if (logoutLink) {
+            logoutLink.onclick = (e) => {
+                e.preventDefault();
+                localStorage.removeItem('wipay_token');
+                window.location.href = 'login.html';
+            };
+        }
+
         // --- Modal Logic ---
         function openDashModal(id) {
             document.getElementById(id).classList.remove('hidden');
@@ -379,7 +433,7 @@
             if (!name) return alert('Enter name');
 
             try {
-                const res = await fetch('/api/admin/categories', {
+                const res = await fetchAuth('/api/admin/categories', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name })
@@ -399,7 +453,7 @@
         // --- Package Logic ---
         async function loadCategoriesForSelect() {
             try {
-                const res = await fetch('/api/admin/categories');
+                const res = await fetchAuth('/api/admin/categories');
                 const cats = await res.json();
                 const select = document.getElementById('pkgCategory');
                 select.innerHTML = '<option value="">Select Category</option>';
@@ -425,7 +479,7 @@
 
             if (!data.name || !data.price || !data.category_id) return alert('Please fill required fields');
 
-            const res = await fetch('/api/admin/packages', {
+            const res = await fetchAuth('/api/admin/packages', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -482,7 +536,7 @@
         // --- Fetch Lists ---
         async function fetchSMSLogs() {
             try {
-                const res = await fetch('/api/admin/sms-logs');
+                const res = await fetchAuth('/api/admin/sms-logs');
                 const logs = await res.json();
                 const tbody = document.getElementById('smsTableBody');
                 tbody.innerHTML = '';
@@ -510,7 +564,7 @@
         // --- Fetch Lists ---
         async function fetchCategoriesList() {
             try {
-                const res = await fetch('/api/admin/categories');
+                const res = await fetchAuth('/api/admin/categories');
                 const rows = await res.json();
                 const tbody = document.getElementById('categoriesTableBody');
                 tbody.innerHTML = '';
@@ -528,7 +582,7 @@
         async function fetchPackagesList() {
             try {
                 // Use Admin API to get all packages + category names
-                const res = await fetch('/api/admin/packages');
+                const res = await fetchAuth('/api/admin/packages');
                 const packs = await res.json();
                 const tbody = document.getElementById('packagesTableBody');
                 tbody.innerHTML = '';
@@ -547,7 +601,7 @@
 
         async function fetchVouchersList() {
             try {
-                const res = await fetch('/api/admin/vouchers');
+                const res = await fetchAuth('/api/admin/vouchers');
                 const vouchers = await res.json();
                 const tbody = document.getElementById('vouchersTableBody');
                 tbody.innerHTML = '';
@@ -629,7 +683,7 @@
             const ids = Array.from(checked).map(cb => cb.value);
 
             try {
-                const res = await fetch('/api/admin/vouchers', {
+                const res = await fetchAuth('/api/admin/vouchers', {
                     method: 'DELETE',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ids })
@@ -651,7 +705,7 @@
             if (!confirm('Delete this voucher?')) return;
             // Reuse bulk endpoint for single
             try {
-                const res = await fetch('/api/admin/vouchers', {
+                const res = await fetchAuth('/api/admin/vouchers', {
                     method: 'DELETE',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ids: [id] })
@@ -663,7 +717,7 @@
         // --- Import / Sell Logic ---
         async function loadPackagesForSelect(targetId) {
             try {
-                const res = await fetch('/api/admin/packages');
+                const res = await fetchAuth('/api/admin/packages');
                 const packs = await res.json();
                 const select = document.getElementById(targetId);
                 select.innerHTML = '<option value="">Select Package</option>';
@@ -685,7 +739,7 @@
             if (!confirm(`Send voucher for selected package to ${phone}?`)) return;
 
             try {
-                const res = await fetch('/api/admin/sell-voucher', {
+                const res = await fetchAuth('/api/admin/sell-voucher', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ package_id: pkgId, phone_number: phone })
@@ -756,7 +810,7 @@
                 if (vouchers.length === 0) return alert('No codes found in file');
 
                 try {
-                    const res = await fetch('/api/admin/vouchers/import', {
+                    const res = await fetchAuth('/api/admin/vouchers/import', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ package_id: pkgId, vouchers })
@@ -782,8 +836,43 @@
         }
 
 
+        async function submitChangePass() {
+            const curr = document.getElementById('currentPass').value;
+            const newP = document.getElementById('newPass').value;
+            const conf = document.getElementById('confirmPass').value;
+
+            if (!curr || !newP || !conf) return alert('All fields required');
+            if (newP !== conf) return alert('New passwords do not match');
+
+            try {
+                const res = await fetchAuth('/api/admin/change-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ currentPassword: curr, newPassword: newP })
+                });
+
+                const data = await res.json();
+                if (res.ok) {
+                    alert('Password Updated! Please login again.');
+                    localStorage.removeItem('wipay_token');
+                    window.location.href = 'login.html';
+                } else {
+                    alert(data.error || 'Failed to update password');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Connection Error');
+            }
+        }
+
         // Attach Event Listeners to Sidebar Links
         document.addEventListener('DOMContentLoaded', () => {
+            // Set Username
+            const user = localStorage.getItem('wipay_user');
+            if (user) {
+                document.getElementById('welcomeMsg').textContent = `WELCOME, ${user}`;
+            }
+
             // Dashboard Home
             document.querySelector('.breadcrumb').addEventListener('click', () => switchView('dashboard'));
 
@@ -816,22 +905,37 @@
                 });
             });
             loadStats();
+            loadSMSBalance(); // Dedicated call
         });
+
+        // Fetch SMS Balance (Separate)
+        async function loadSMSBalance() {
+            const balEl = document.getElementById('sms-balance');
+            try {
+                balEl.textContent = 'Loading...';
+                const res = await fetchAuth('/api/admin/sms-balance');
+                const data = await res.json();
+
+                if (data.balance !== undefined && data.balance !== null) {
+                    balEl.textContent = `SMS: ${data.balance}`;
+                } else {
+                    balEl.textContent = 'SMS: N/A';
+                }
+            } catch (err) {
+                console.error('Failed to load SMS Balance', err);
+                balEl.textContent = 'SMS: Error';
+                balEl.style.color = '#e74c3c'; // Red for error
+            }
+        }
 
         // Fetch Admin Stats
         async function loadStats() {
             try {
-                const res = await fetch('/api/admin/stats');
+                const res = await fetchAuth('/api/admin/stats');
                 const data = await res.json();
 
                 if (data.finance) {
-                    // Update SMS Balance
-                    const balEl = document.getElementById('sms-balance');
-                    if (data.sms_balance !== undefined && data.sms_balance !== null) {
-                        balEl.textContent = `SMS: ${data.sms_balance}`; // Adapt specific format if known
-                    } else {
-                        balEl.textContent = 'SMS: N/A';
-                    }
+                    // SMS Balance handled separately now
 
                     document.getElementById('daily-trans').textContent = Number(data.finance.daily_revenue).toLocaleString();
                     document.getElementById('weekly-trans').textContent = Number(data.finance.weekly_revenue).toLocaleString();
@@ -852,6 +956,8 @@
 
             } catch (err) {
                 console.error('Failed to load stats', err);
+                // Set errors on key elements
+                document.getElementById('balance').textContent = 'Error';
             }
         }
 
@@ -868,7 +974,7 @@
             if (!confirm(`Are you sure you want to withdraw UGX ${amount} to ${phone}?`)) return;
 
             try {
-                const res = await fetch('/api/admin/withdraw', {
+                const res = await fetchAuth('/api/admin/withdraw', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ phone_number: phone, amount: amount, description: desc })
@@ -894,7 +1000,10 @@
         }
 
         // Refresh every 30 seconds
-        setInterval(loadStats, 30000);
+        setInterval(() => {
+            loadStats();
+            loadSMSBalance();
+        }, 30000);
     </script>
 
     <!-- Withdraw Modal (Placed correctly outside script) -->

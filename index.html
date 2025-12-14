@@ -41,6 +41,9 @@
         <div id="packages-container" class="packages-grid">
             <div class="loading">Loading packages...</div>
         </div>
+        <div id="no-admin-msg" class="hidden" style="text-align:center; padding: 20px; color: #666;">
+            <p>Please scan the <strong>QR Code</strong> provided by your WiFi Agent to view packages.</p>
+        </div>
 
         <!-- Info Footer -->
         <div class="info-footer">
@@ -87,21 +90,40 @@
             // Modal Elements
             const paymentModal = document.getElementById('paymentModal');
             const closeModalBtn = document.getElementById('closeModalBtn');
-            const modalPhoneNumber = document.getElementById('modalPhoneNumber');
             const modalPayBtn = document.getElementById('modalPayBtn');
             const modalCancelBtn = document.getElementById('modalCancelBtn');
             const modalPackageName = document.getElementById('modalPackageName');
             const modalPrice = document.getElementById('modalPrice');
 
+            // --- CONFIGURATION FOR ROUTER DEPLOYMENT ---
+            // Change this value to the Admin ID (e.g., 1 or 2) when installing on a specific router.
+            // If null, it will try to read from the URL (?admin=1).
+            const ROUTER_ADMIN_ID = 2;
+
             let selectedPackageId = null;
             let selectedPackagePrice = 0;
 
             // Fetch Packages
-            fetch('/api/packages')
+            // Priority: 1. Hardcoded ID (Router) -> 2. URL Param (Shared Link)
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlAdminId = urlParams.get('admin');
+            const targetAdminId = ROUTER_ADMIN_ID || urlAdminId;
+
+            let fetchUrl = '/api/packages';
+            if (targetAdminId) fetchUrl += `?admin_id=${targetAdminId}`;
+
+            fetch(fetchUrl)
                 .then(res => res.json())
                 .then(packages => {
                     const packagesContainer = document.getElementById('packages-container');
                     packagesContainer.innerHTML = '';
+
+                    if (packages.length === 0) {
+                        document.getElementById('no-admin-msg').classList.remove('hidden');
+                        packagesContainer.style.display = 'none';
+                        return;
+                    }
+
                     packages.forEach(pkg => {
                         const row = document.createElement('div');
                         row.className = 'package-row';

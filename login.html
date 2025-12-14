@@ -47,20 +47,36 @@
             const user = document.getElementById('username').value;
             const pass = document.getElementById('password').value;
 
-            // Simple mock authentication
-            // In a real app, you'd send a POST request to your backend
-            if (user === 'admin' && pass === 'password') {
-                // Animate button for feedback
-                const btn = document.querySelector('.login-btn');
-                btn.textContent = 'Success!';
-                btn.style.background = '#2ecc71';
+            // Real Authentication
+            fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user, password: pass })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.token) {
+                        // Success
+                        const btn = document.querySelector('.login-btn');
+                        btn.textContent = 'Success!';
+                        btn.style.background = '#2ecc71';
 
-                setTimeout(() => {
-                    window.location.href = 'dashboard.html';
-                }, 800);
-            } else {
-                alert('Invalid Credentials! (Try: admin / password)');
-            }
+                        // Store Token
+                        localStorage.setItem('wipay_token', data.token);
+                        localStorage.setItem('wipay_user', data.username);
+
+                        setTimeout(() => {
+                            window.location.href = 'dashboard.html';
+                        }, 800);
+                    } else {
+                        // Fail
+                        alert(data.error || 'Login Failed');
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert('Connection Error');
+                });
         }
     </script>
 </body>
