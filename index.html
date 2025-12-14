@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Garuga Spot</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <img src="Wifi-Icon.png" alt="Wi-Fi" class="wifi-icon-img">
+            <h1>Garuga Spot</h1>
+            <p>Stay online, Stay informed</p>
+        </header>
+
+        <!-- Top Section: Free Trial & Voucher -->
+        <div class="section-card free-trial">
+            <span>Free trial available</span>
+            <button class="trial-btn">click here</button>
+        </div>
+
+        <div class="section-card voucher-section">
+            <input type="text" id="voucherCode" placeholder="Enter voucher / Tekamu kodi">
+        </div>
+
+        <button id="voucherRedeemBtn" class="connect-btn">Connect</button>
+
+        <!-- Payment Methods -->
+        <div class="payment-methods">
+            <p>We Accept</p>
+            <div class="method-logos">
+                <span class="method-badge airtel">Airtel Money</span>
+                <span class="method-badge mtn">MTN MoMo</span>
+            </div>
+        </div>
+
+        <!-- Packages Grid -->
+        <div id="packages-container" class="packages-grid">
+            <div class="loading">Loading packages...</div>
+        </div>
+
+        <!-- Info Footer -->
+        <div class="info-footer">
+            <strong>FOR INQUIRIES</strong>
+            WhatsApp or call 0757136062<br>
+
+        </div>
+
+        <!-- Messages -->
+        <div id="statusMessage" class="status-message hidden"></div>
+    </div>
+
+    <!-- Payment Modal -->
+    <div id="paymentModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <button id="closeModalBtn" class="close-modal-btn">&times;</button>
+            <h2>Confirm Purchase</h2>
+            <p id="modalPackageName">Package Name</p>
+
+            <div class="input-group">
+                <input type="tel" id="modalPhoneNumber" placeholder="Enter Phone Number (e.g., 07XX...)"
+                    pattern="[0-9]*">
+            </div>
+
+            <div class="modal-actions">
+                <button id="modalPayBtn" class="btn primary-btn"
+                    style="background: var(--primary-green); border: none; padding: 12px; color: white;">Pay
+                    Now</button>
+                <button id="modalCancelBtn" class="btn secondary-btn"
+                    style="color: #aaa; text-decoration: none;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const packagesContainer = document.getElementById('packages-container');
+            const statusMessage = document.getElementById('statusMessage');
+
+            // Voucher Elements
+            const voucherCodeInput = document.getElementById('voucherCode');
+            const voucherRedeemBtn = document.getElementById('voucherRedeemBtn');
+
+            // Modal Elements
+            const paymentModal = document.getElementById('paymentModal');
+            const closeModalBtn = document.getElementById('closeModalBtn');
+            const modalPhoneNumber = document.getElementById('modalPhoneNumber');
+            const modalPayBtn = document.getElementById('modalPayBtn');
+            const modalCancelBtn = document.getElementById('modalCancelBtn');
+            const modalPackageName = document.getElementById('modalPackageName');
+            const modalPrice = document.getElementById('modalPrice');
+
+            let selectedPackageId = null;
+            let selectedPackagePrice = 0;
+
+            // Fetch Packages
+            fetch('/api/packages')
+                .then(res => res.json())
+                .then(packages => {
+                    const packagesContainer = document.getElementById('packages-container');
+                    packagesContainer.innerHTML = '';
+                    packages.forEach(pkg => {
+                        const row = document.createElement('div');
+                        row.className = 'package-row';
+
+                        // Reference Layout: Name - Price - Button
+                        row.innerHTML = `
+                            <div class="pkg-name">${pkg.name}</div>
+                            <div class="pkg-price">${Number(pkg.price).toLocaleString()}/=</div>
+                            <button class="pay-btn-ref" onclick="initiatePay('${pkg.id}', '${pkg.name}', ${pkg.price})">PAY</button>
+                        `;
+
+                        if (packagesContainer) packagesContainer.appendChild(row);
+                    });
+                })
+                .catch(err => {
+                    const packagesContainer = document.getElementById('packages-container');
+                    if (packagesContainer) packagesContainer.innerHTML = '<div class="error" style="color:red">Failed to load packages.</div>';
+                });
+
+            // Global function to be called from HTML onclick
+            window.initiatePay = function (id, name, price) {
+                selectedPackageId = id;
+                selectedPackagePrice = price;
+                modalPackageName.textContent = `${name} - ${Number(price).toLocaleString()} /=`;
+                modalPayBtn.textContent = `Pay ${Number(price).toLocaleString()} /= \n(Mobile Money)`;
+                paymentModal.classList.remove('hidden');
+                modalPhoneNumber.focus();
+            };
+
+            // Voucher Logic (Simulation)
+            voucherRedeemBtn.addEventListener('click', () => {
+                const code = voucherCodeInput.value.trim();
+                if (!code) {
+                    showMessage('Please enter a voucher code', 'error');
+                    return;
+                }
+                showMessage('Verifying voucher...', 'info');
+                // Simulate API call
+                setTimeout(() => {
+                    showMessage('Invalid or expired voucher', 'error');
+                }, 1500);
+            });
+
+            // Close Modal Logic
+            function closeModal() {
+                paymentModal.classList.add('hidden');
+                modalPhoneNumber.value = '';
+                modalPayBtn.disabled = false;
+            }
+            closeModalBtn.onclick = closeModal;
+            modalCancelBtn.onclick = closeModal;
+            paymentModal.onclick = (e) => {
+                if (e.target === paymentModal) closeModal();
+            };
+
+            // Pay Button Logic
+            modalPayBtn.addEventListener('click', async () => {
+                const phoneNumber = modalPhoneNumber.value.trim();
+                if (!phoneNumber) {
+                    showMessage('Please enter your phone number.', 'error');
+                    return;
+                }
+
+                modalPayBtn.disabled = true;
+                modalPayBtn.textContent = 'Processing...';
+
+                try {
+                    const purchaseRes = await fetch('/api/purchase', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone_number: phoneNumber, package_id: selectedPackageId })
+                    });
+                    const purchaseData = await purchaseRes.json();
+
+                    if (purchaseData.transaction_id) {
+                        closeModal();
+                        showMessage(purchaseData.message, 'success');
+
+                        // SIMULATION: Automatically trigger webhook
+                        setTimeout(() => simulatePaymentSuccess(purchaseData.transaction_id, phoneNumber, selectedPackageId), 3000);
+                    } else {
+                        showMessage(purchaseData.error || 'Purchase failed', 'error');
+                        modalPayBtn.disabled = false;
+                        modalPayBtn.textContent = `Pay ${Number(selectedPackagePrice).toLocaleString()} /=`;
+                    }
+                } catch (err) {
+                    showMessage('Network error. Please try again.', 'error');
+                    modalPayBtn.disabled = false;
+                }
+            });
+
+            async function simulatePaymentSuccess(txId, phone, pkgId) {
+                showMessage('Waiting for Payment...', 'info');
+                await fetch('/api/payment-webhook', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        transaction_id: txId,
+                        phone_number: phone,
+                        package_id: pkgId,
+                        status: 'SUCCESS'
+                    })
+                });
+                checkConnection(phone);
+            }
+
+            async function checkConnection(phone) {
+                const res = await fetch('/api/connect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone_number: phone })
+                });
+                const data = await res.json();
+                if (data.status === 'connected') {
+                    showMessage(`Connected! Redirecting...`, 'success');
+                } else {
+                    showMessage(data.message, 'error');
+                }
+            }
+
+            function showMessage(msg, type) {
+                statusMessage.textContent = msg;
+                statusMessage.className = `status-message ${type}`;
+                statusMessage.classList.remove('hidden');
+                setTimeout(() => {
+                    statusMessage.classList.add('hidden');
+                }, 5000);
+            }
+        });
+    </script>
+</body>
+
+</html>

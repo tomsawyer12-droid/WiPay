@@ -1,0 +1,475 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+:root {
+    --primary-green: #28a745;
+    --primary-yellow: #ffc107;
+    --glass-bg: rgba(0, 0, 0, 0.75);
+    --input-bg: rgba(255, 255, 255, 0.1);
+    --text-white: #ffffff;
+    --text-gray: #cccccc;
+    --bg-image: url('https://images.unsplash.com/photo-1549880338-65ddcdfd017b?q=80&w=1920&auto=format&fit=crop');
+}
+
+body {
+    font-family: 'Poppins', sans-serif;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    background: var(--bg-image) no-repeat center center fixed;
+    background-size: cover;
+    color: var(--text-white);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+body::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    /* Overlay to darken background */
+    z-index: -1;
+}
+
+.container {
+    background: var(--glass-bg);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding: 2rem;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    width: 90%;
+    max-width: 450px;
+    text-align: center;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+    margin: 20px 0;
+}
+
+header {
+    margin-bottom: 2rem;
+}
+
+.wifi-icon-img {
+    width: 80px;
+    height: auto;
+    margin-bottom: 0.5rem;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    filter: drop-shadow(0 0 5px rgba(40, 167, 69, 0.5));
+    /* Green glow */
+}
+
+header h1 {
+    font-size: 2.2rem;
+    margin: 0;
+    font-weight: 600;
+    color: var(--primary-green);
+    letter-spacing: 1px;
+}
+
+header p {
+    color: var(--text-gray);
+    font-size: 0.9rem;
+    margin-top: 5px;
+}
+
+/* --- Input Sections --- */
+.section-card {
+    background: var(--input-bg);
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.free-trial {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    color: var(--text-white);
+}
+
+.trial-btn {
+    background: transparent;
+    border: 1px solid var(--primary-green);
+    color: var(--primary-green);
+    padding: 5px 15px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.voucher-section input {
+    width: 100%;
+    padding: 15px;
+    background: transparent;
+    border: none;
+    color: white;
+    text-align: center;
+    font-size: 1rem;
+    outline: none;
+}
+
+.voucher-section input::placeholder {
+    color: var(--text-gray);
+}
+
+.connect-btn {
+    width: 100%;
+    padding: 15px;
+    background-color: var(--primary-green);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 1.5rem;
+    transition: transform 0.2s;
+}
+
+.connect-btn:hover {
+    transform: scale(1.02);
+}
+
+/* --- Payment Methods --- */
+.payment-methods {
+    margin-bottom: 1.5rem;
+}
+
+.payment-methods p {
+    font-size: 0.8rem;
+    margin-bottom: 5px;
+    color: var(--text-gray);
+}
+
+.method-logos {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.method-badge {
+    background: #fff;
+    color: #333;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.mtn {
+    border-bottom: 3px solid #ffcc00;
+}
+
+.airtel {
+    border-bottom: 3px solid #ff0000;
+}
+
+/* --- Packages List (Reference Style) --- */
+.packages-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-bottom: 2rem;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    padding: 10px 20px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.package-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    align-items: center;
+    padding: 15px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+.package-row:last-child {
+    border-bottom: none;
+}
+
+.pkg-name {
+    font-weight: 700;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    font-style: italic;
+    color: var(--text-white);
+    letter-spacing: 0.5px;
+    text-align: left;
+}
+
+.pkg-price {
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text-white);
+    text-align: center;
+}
+
+.pay-btn-ref {
+    background: linear-gradient(180deg, #ffeb3b 0%, #ff9800 100%);
+    border: none;
+    padding: 8px 24px;
+    border-radius: 6px;
+    color: #000;
+    font-weight: 800;
+    font-size: 0.9rem;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s;
+    text-transform: uppercase;
+}
+
+.pay-btn-ref:hover {
+    transform: scale(1.05);
+    filter: brightness(1.1);
+}
+
+/* --- Footer Info --- */
+.info-footer {
+    margin-top: 2rem;
+    background: rgba(255, 255, 255, 0.9);
+    color: #333;
+    padding: 15px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+}
+
+.info-footer strong {
+    color: #d32f2f;
+    display: block;
+    margin-bottom: 5px;
+}
+
+/* --- Modal Updates --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    /* Dark transparent background */
+    display: flex;
+    /* Centering magic */
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    /* Ensure it's on top */
+    backdrop-filter: blur(5px);
+    /* Nice blur effect behind modal */
+}
+
+.modal-content {
+    background: #222;
+    color: white;
+    border: 1px solid #444;
+    padding: 2rem;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 400px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    position: relative;
+    /* Animation */
+    animation: modalPop 0.3s ease-out;
+}
+
+@keyframes modalPop {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* --- Modal Internals --- */
+.modal-content h2 {
+    color: var(--primary-green);
+    margin-top: 0;
+    margin-bottom: 5px;
+    font-size: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.modal-content p {
+    color: #ccc;
+    font-size: 0.95rem;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #444;
+    padding-bottom: 10px;
+}
+
+.input-group {
+    margin-bottom: 20px;
+}
+
+.modal-content input {
+    background: #333;
+    border: 1px solid #555;
+    color: white;
+    padding: 14px;
+    border-radius: 8px;
+    width: 100%;
+    font-size: 1.1rem;
+    text-align: center;
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5);
+    transition: border-color 0.3s;
+    box-sizing: border-box;
+    /* Crucial for width */
+}
+
+.modal-content input:focus {
+    border-color: var(--primary-green);
+    outline: none;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    margin-top: 10px;
+}
+
+.modal-actions .btn {
+    flex: 1;
+    padding: 12px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: filter 0.2s;
+}
+
+.modal-actions .btn:hover {
+    filter: brightness(1.2);
+}
+
+.close-modal-btn {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    background: transparent;
+    border: none;
+    color: #999;
+    font-size: 2rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.close-modal-btn:hover {
+    color: #ff5555;
+}
+
+.status-message {
+    padding: 10px;
+    border-radius: 5px;
+    margin-top: 10px;
+}
+
+.status-message.error {
+    background: rgba(220, 53, 69, 0.9);
+    color: white;
+}
+
+.status-message.success {
+    background: rgba(40, 167, 69, 0.9);
+    color: white;
+}
+
+.status-message.info {
+    background: rgba(23, 162, 184, 0.9);
+    color: white;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* --- Media Queries --- */
+
+/* Mobile Phones (Portrait) */
+@media (max-width: 600px) {
+    .container {
+        width: 95%;
+        padding: 1.5rem 1rem;
+        margin: 10px 0;
+    }
+
+    /* Adjust Package Row for very small screens */
+    .package-row {
+        grid-template-columns: 1fr auto;
+        grid-template-areas:
+            "name price"
+            "btn btn";
+        gap: 10px;
+        text-align: left;
+    }
+
+    .pkg-name {
+        grid-area: name;
+        font-size: 1rem;
+    }
+
+    .pkg-price {
+        grid-area: price;
+        text-align: right;
+    }
+
+    .pay-btn-ref {
+        grid-area: btn;
+        width: 100%;
+        /* Full width button on small mobile */
+        padding: 10px;
+        font-size: 1rem;
+    }
+
+    /* Modal Adjustments */
+    .modal-content {
+        width: 95%;
+        padding: 1.5rem;
+    }
+
+    .modal-actions {
+        flex-direction: column;
+    }
+
+    .modal-actions .btn {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+
+    header h1 {
+        font-size: 1.8rem;
+    }
+
+    .wifi-icon-img {
+        width: 60px;
+        /* Slightly smaller on mobile */
+    }
+}
+
+/* Tablet / Larger Mobile */
+@media (min-width: 601px) and (max-width: 768px) {
+    .container {
+        width: 80%;
+    }
+
+    .package-row {
+        grid-template-columns: 1.5fr 1fr auto;
+        /* More space for name */
+    }
+}

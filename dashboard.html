@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WIPAY - Admin Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+
+<body>
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="search-box">
+                <input type="text" placeholder="Start typing to filter...">
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section">DATA</div>
+                <ul>
+                    <li><a href="#">Bought Vouchers</a></li>
+                    <li><a href="#">Categories <span class="add-btn">+ Add</span></a></li>
+                    <li><a href="#">Packages <span class="add-btn">+ Add</span></a></li>
+                    <li><a href="#">Vouchers</a></li>
+                </ul>
+
+                <div class="nav-section">FINANCE</div>
+                <ul>
+                    <li class="active"><a href="#">Payments</a></li>
+                </ul>
+
+                <div class="nav-section">COMMS</div>
+                <ul>
+                    <li><a href="#">Ads <span class="add-btn">+ Add</span></a></li>
+                    <li><a href="#" onclick="switchView('sms'); return false;">SMS</a></li>
+                </ul>
+
+                <div class="nav-section">SYSTEM</div>
+                <ul>
+                    <li><a href="#">Locations</a></li>
+                    <li><a href="#">Subscription</a></li>
+                    <li><a href="#">Web Configs</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- New Main Header -->
+            <header class="main-header">
+                <div class="header-left" onclick="switchView('dashboard')" style="cursor: pointer;"
+                    title="Go to Dashboard">
+                    <img src="favicon.png" alt="WiPay Logo" class="header-logo">
+                    <span class="brand-name">WiPay</span>
+                </div>
+
+                <div class="header-center">
+                    <button class="btn-sell-voucher" onclick="openDashModal('sellVoucherModal')">Sell Voucher</button>
+                </div>
+
+                <div class="header-right">
+                    <span>WELCOME, PRINCE</span>
+                    <a href="/" target="_blank">VIEW SITE</a> /
+                    <a href="#">CHANGE PASSWORD</a> /
+                    <a href="#" onclick="window.location.reload()">LOG OUT</a>
+                    <span class="theme-toggle">◐</span>
+                </div>
+            </header>
+
+            <!-- Sub Header (Breadcrumbs) -->
+            <div class="sub-header">
+                <div class="breadcrumb" id="breadcrumb">Home > Dashboard</div>
+            </div>
+
+            <!-- Mobile Navigation (Visible only on mobile) -->
+            <div class="mobile-nav hidden-desktop">
+                <div class="mobile-nav-btn" onclick="switchView('dashboard')">Dashboard</div>
+                <div class="mobile-nav-btn" onclick="switchView('categories')">Categories</div>
+                <div class="mobile-nav-btn" onclick="switchView('packages')">Packages</div>
+                <div class="mobile-nav-btn" onclick="switchView('vouchers')">Vouchers</div>
+            </div>
+
+            <!-- Dashboard View -->
+            <div id="dashboardView" class="view-section">
+                <div class="content-header">
+                    <h2>Dashboard</h2>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="stats-grid">
+                    <!-- Row 1 -->
+                    <div class="stat-card cyan">
+                        <div class="stat-value" id="sms-balance">Loading...</div>
+                        <div class="stat-label">SMS Balance</div>
+                        <div class="card-footer">Buy SMS <span class="arrow">→</span></div>
+                    </div>
+
+                    <div class="stat-card green">
+                        <div class="stat-value" id="balance">Loading...</div>
+                        <div class="stat-label">Mobile Money Balance</div>
+                        <div class="card-footer" onclick="openDashModal('withdrawModal')" style="cursor: pointer;">
+                            Withdraw UGX <span class="arrow">→</span></div>
+                    </div>
+
+                    <div class="stat-card gray">
+                        <div class="stat-value" id="daily-trans">0</div>
+                        <div class="stat-label">Daily Transacted</div>
+
+                    </div>
+
+                    <div class="stat-card red">
+                        <div class="stat-value" id="weekly-trans">0</div>
+                        <div class="stat-label">Weekly Transacted</div>
+
+                    </div>
+
+                    <!-- Row 2 -->
+                    <div class="stat-card blue">
+                        <div class="stat-value" id="monthly-trans">0</div>
+                        <div class="stat-label">Monthly Transacted</div>
+
+                    </div>
+
+                    <div class="stat-card yellow">
+                        <div class="stat-value" id="yearly-trans">0</div>
+                        <div class="stat-label">Yearly Transacted</div>
+
+                    </div>
+
+                    <div class="stat-card gray">
+                        <div class="stat-value" id="total-trans">0</div>
+                        <div class="stat-label">Total Transacted</div>
+
+                    </div>
+
+                    <div class="stat-card blue">
+                        <div class="stat-value" id="bought-vouchers">0</div>
+                        <div class="stat-label">Bought Vouchers</div>
+                        <div class="card-footer">More info <span class="arrow">→</span></div>
+
+                    </div>
+
+                    <!-- Row 3 -->
+                    <div class="stat-card green">
+                        <div class="stat-value" id="cat-count">0</div>
+                        <div class="stat-label">Categories</div>
+                        <div class="card-footer" onclick="switchView('categories')" style="cursor: pointer;">More info
+                            <span class="arrow">→</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card gray">
+                        <div class="stat-value" id="pkg-count">0</div>
+                        <div class="stat-label">Packages</div>
+                        <div class="card-footer" onclick="switchView('packages')" style="cursor: pointer;">More info
+                            <span class="arrow">→</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card red">
+                        <div class="stat-value" id="voucher-count">0</div>
+                        <div class="stat-label">Vouchers</div>
+                        <div class="card-footer" onclick="switchView('vouchers')" style="cursor: pointer;">More info
+                            <span class="arrow">→</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card yellow">
+                        <div class="stat-value" id="payments-count">0</div>
+                        <div class="stat-label">Payments</div>
+                        <div class="card-footer">More info <span class="arrow">→</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Categories View (Hidden by default) -->
+            <div id="categoriesView" class="view-section hidden">
+                <div class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>Categories</h2>
+                    <button class="btn-save" onclick="openDashModal('addCategoryModal')">+ Add Category</button>
+                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="categoriesTableBody">
+                        <!-- JS renders rows here -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Packages View (Hidden by default) -->
+            <div id="packagesView" class="view-section hidden">
+                <div class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>Packages</h2>
+                    <button class="btn-save" onclick="openDashModal('addPackageModal')">+ Add Package</button>
+                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Price (UGX)</th>
+                            <th>Duration (Hrs)</th>
+                            <th>Category</th>
+                        </tr>
+                    </thead>
+                    <tbody id="packagesTableBody">
+                        <!-- JS renders rows here -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Vouchers View (Hidden by default) -->
+            <div id="vouchersView" class="view-section hidden">
+                <div class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>Vouchers</h2>
+                    <div style="display: flex; gap: 10px;">
+                        <button id="btnDeleteVouchers" class="btn-cancel hidden"
+                            onclick="deleteSelectedVouchers()">Delete Selected</button>
+                        <button class="btn-save" onclick="openDashModal('importVoucherModal')">Import Vouchers</button>
+                    </div>
+                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;"><input type="checkbox" id="selectAllVoucherCb"
+                                    onclick="toggleAllVouchers(this)"></th>
+                            <th>Code</th>
+                        </tr>
+                    </thead>
+                    <tbody id="vouchersTableBody">
+                        <!-- JS renders rows here -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- SMS Logs View (Hidden by default) -->
+            <div id="smsView" class="view-section hidden">
+                <div class="content-header">
+                    <h2>SMS Logs</h2>
+                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Phone</th>
+                            <th>Message</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="smsTableBody">
+                        <!-- JS renders rows here -->
+                    </tbody>
+                </table>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Modals (Add Category/Package) -->
+    <!-- Same modals as before... -->
+
+    <!-- Add Category Modal -->
+    <div id="addCategoryModal" class="dashboard-modal hidden">
+        <div class="dashboard-modal-content">
+            <h3>Add Category</h3>
+            <input type="text" id="newCatName" placeholder="Category Name (e.g., Daily Bundles)">
+            <div class="modal-actions">
+                <button onclick="createCategory()" class="btn-save">Save</button>
+                <button onclick="closeDashModal('addCategoryModal')" class="btn-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+    <!-- ... -->
+
+    <!-- ... -->
+
+
+    <!-- Add Package Modal -->
+    <div id="addPackageModal" class="dashboard-modal hidden">
+        <div class="dashboard-modal-content">
+            <h3>Add Package</h3>
+            <input type="text" id="pkgName" placeholder="Package Name (e.g., 1 Hour Access)">
+            <input type="number" id="pkgPrice" placeholder="Price (UGX)">
+            <input type="number" id="pkgDuration" placeholder="Duration (Hours)">
+            <input type="number" id="pkgMB" placeholder="Data Limit (MB) - Optional">
+            <select id="pkgCategory">
+                <option value="">Select Category</option>
+            </select>
+            <div class="modal-actions">
+                <button onclick="createPackage()" class="btn-save">Save</button>
+                <button onclick="closeDashModal('addPackageModal')" class="btn-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Voucher Modal -->
+    <div id="importVoucherModal" class="dashboard-modal hidden">
+        <div class="dashboard-modal-content">
+            <h3>Import Vouchers</h3>
+            <div style="margin-bottom: 15px; font-size: 0.9rem; color: #ccc;">
+                Select a package and upload a CSV file containing voucher codes (one per line).
+            </div>
+            <select id="importPackageId">
+                <option value="">Select Package</option>
+            </select>
+            <input type="file" id="voucherCsv" accept=".csv" style="padding: 10px; background: #333; color: white;">
+
+            <div class="modal-actions">
+                <button onclick="importVouchers()" class="btn-save">Upload</button>
+                <button onclick="closeDashModal('importVoucherModal')" class="btn-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sell Voucher Modal -->
+    <div id="sellVoucherModal" class="dashboard-modal hidden">
+        <div class="dashboard-modal-content">
+            <h3>Sell Voucher</h3>
+            <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">Send a voucher via SMS.</p>
+
+            <select id="sellPackageId" style="width: 100%; margin-bottom: 15px; padding: 10px;">
+                <option value="">Select Package</option>
+            </select>
+
+            <input type="text" id="sellPhone" placeholder="Recipient Phone (+256...)"
+                style="width: 100%; padding: 10px; margin-bottom: 15px;">
+
+            <div class="modal-actions">
+                <button onclick="submitSellVoucher()" class="btn-save">Send SMS</button>
+                <button onclick="closeDashModal('sellVoucherModal')" class="btn-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div id="successModal" class="dashboard-modal hidden">
+        <div class="dashboard-modal-content success-content">
+            <div class="success-header">
+                <img src="favicon.png" alt="WiPay Logo" class="success-logo">
+            </div>
+            <div class="success-icon">
+                <div class="checkmark-circle">
+                    <div class="background"></div>
+                    <div class="checkmark draw"></div>
+                </div>
+            </div>
+            <h3 class="success-title">Success!</h3>
+            <p id="successMessage" class="success-message">
+                <!-- Voucher (CODE) has been sent successfully to (PHONE). -->
+            </p>
+            <div class="modal-actions center-actions">
+                <button onclick="closeDashModal('successModal')" class="btn-save">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Modal Logic ---
+        function openDashModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+            if (id === 'addPackageModal') loadCategoriesForSelect();
+            if (id === 'importVoucherModal') loadPackagesForSelect('importPackageId');
+            if (id === 'sellVoucherModal') loadPackagesForSelect('sellPackageId');
+        }
+
+        function closeDashModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        // --- Category Logic ---
+        async function createCategory() {
+            const name = document.getElementById('newCatName').value;
+            if (!name) return alert('Enter name');
+
+            try {
+                const res = await fetch('/api/admin/categories', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name })
+                });
+                if (res.ok) {
+                    closeDashModal('addCategoryModal');
+                    alert('Category Created!');
+                    loadStats();
+                } else {
+                    alert('Failed to create category');
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        // --- Package Logic ---
+        async function loadCategoriesForSelect() {
+            try {
+                const res = await fetch('/api/admin/categories');
+                const cats = await res.json();
+                const select = document.getElementById('pkgCategory');
+                select.innerHTML = '<option value="">Select Category</option>';
+                cats.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.textContent = c.name;
+                    select.appendChild(opt);
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function createPackage() {
+            const data = {
+                name: document.getElementById('pkgName').value,
+                price: document.getElementById('pkgPrice').value,
+                validity_hours: document.getElementById('pkgDuration').value,
+                data_limit_mb: document.getElementById('pkgMB').value,
+                category_id: document.getElementById('pkgCategory').value
+            };
+
+            if (!data.name || !data.price || !data.category_id) return alert('Please fill required fields');
+
+            const res = await fetch('/api/admin/packages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            if (res.ok) {
+                closeDashModal('addPackageModal');
+                loadStats();
+                alert('Package Created!');
+            } else {
+                alert('Failed to create package');
+            }
+        }
+
+        // --- View Switching Logic ---
+        const views = {
+            'dashboard': document.getElementById('dashboardView'),
+            'categories': document.getElementById('categoriesView'),
+            'packages': document.getElementById('packagesView'),
+            'vouchers': document.getElementById('vouchersView'),
+            'sms': document.getElementById('smsView')
+        };
+
+        const breadcrumbMap = {
+            'dashboard': 'Home > Dashboard',
+            'categories': 'Home > Dashboard > Categories',
+            'packages': 'Home > Dashboard > Packages',
+            'vouchers': 'Home > Dashboard > Vouchers',
+            'sms': 'Home > Dashboard > SMS Logs'
+        };
+
+        function switchView(viewName) {
+            // Hide all views
+            Object.values(views).forEach(el => el.classList.add('hidden'));
+
+            // Show selected view
+            const selected = views[viewName];
+            if (selected) {
+                selected.classList.remove('hidden');
+
+                // Update Breadcrumb
+                const bc = document.querySelector('.breadcrumb');
+                if (breadcrumbMap[viewName]) bc.innerText = breadcrumbMap[viewName];
+
+                // Refresh data based on view
+                if (viewName === 'categories') fetchCategoriesList();
+                if (viewName === 'packages') fetchPackagesList();
+                if (viewName === 'vouchers') fetchVouchersList();
+                if (viewName === 'sms') fetchSMSLogs();
+                if (viewName === 'dashboard') loadStats();
+            }
+        }
+
+        // --- Fetch Lists ---
+        async function fetchSMSLogs() {
+            try {
+                const res = await fetch('/api/admin/sms-logs');
+                const logs = await res.json();
+                const tbody = document.getElementById('smsTableBody');
+                tbody.innerHTML = '';
+
+                if (logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#888;">No SMS logs found.</td></tr>';
+                    return;
+                }
+
+                logs.forEach(log => {
+                    const statusColor = log.status === 'success' ? '#4caf50' : (log.status === 'pending' ? '#ff9800' : '#f44336');
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${new Date(log.created_at).toLocaleString()}</td>
+                            <td>${log.phone_number}</td>
+                            <td>${log.message}</td>
+                            <td style="color: ${statusColor}; font-weight: 500;">${log.status.toUpperCase()}</td>
+                        </tr>
+                    `;
+                });
+            } catch (e) { console.error(e); }
+        }
+
+
+        // --- Fetch Lists ---
+        async function fetchCategoriesList() {
+            try {
+                const res = await fetch('/api/admin/categories');
+                const rows = await res.json();
+                const tbody = document.getElementById('categoriesTableBody');
+                tbody.innerHTML = '';
+                rows.forEach(r => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${r.name}</td>
+                            <td><button class="btn-cancel" style="padding:4px 8px; font-size:0.7rem;">Delete</button></td>
+                        </tr>
+                    `;
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        async function fetchPackagesList() {
+            try {
+                // Use Admin API to get all packages + category names
+                const res = await fetch('/api/admin/packages');
+                const packs = await res.json();
+                const tbody = document.getElementById('packagesTableBody');
+                tbody.innerHTML = '';
+                packs.forEach(p => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${p.name}</td>
+                            <td>${Number(p.price).toLocaleString()} UGX</td>
+                            <td>${p.validity_hours} Hours</td>
+                            <td>${p.category_name || '-'}</td>
+                        </tr>
+                    `;
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        async function fetchVouchersList() {
+            try {
+                const res = await fetch('/api/admin/vouchers');
+                const vouchers = await res.json();
+                const tbody = document.getElementById('vouchersTableBody');
+                tbody.innerHTML = '';
+
+                if (vouchers.length === 0) {
+                    tbody.innerHTML = '<tr><td style="text-align:center; color: #888;">No available vouchers found.</td></tr>';
+                    return;
+                }
+
+                vouchers.forEach(v => {
+                    const uniqueId = `v-details-${v.id}`;
+                    tbody.innerHTML += `
+                        <!-- Main Row (Clickable) -->
+                        <tr onclick="toggleVoucherRow('${uniqueId}')" style="cursor: pointer;">
+                            <td onclick="event.stopPropagation()">
+                                <input type="checkbox" class="voucher-cb" value="${v.id}" onchange="checkVoucherSelection()">
+                            </td>
+                            <td style="font-weight: bold; color: #03a9f4;">
+                                <span style="margin-right: 10px;">▶</span> ${v.code}
+                            </td>
+                        </tr>
+                        <!-- Details Row (Hidden) -->
+                        <tr id="${uniqueId}" class="hidden" style="background: #222;">
+                            <td></td> <!-- Empty for checkbox col -->
+                            <td style="padding: 15px 25px; border-bottom: 2px solid #444;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9rem;">
+                                    <div><strong>Package:</strong> ${v.package_name}</div>
+                                    <div><strong>Ref:</strong> <span style="color: #bbb;">${v.package_ref || '-'}</span></div>
+                                    <div><strong>Created:</strong> ${new Date(v.created_at).toLocaleDateString()}</div>
+                                    <div><strong>Status:</strong> Available</div>
+                                    <div style="grid-column: span 2;">
+                                        <strong>Comment:</strong> <span style="color: #bbb;">${v.comment || '-'}</span>
+                                    </div>
+                                    <div style="grid-column: span 2; margin-top: 5px;">
+                                        <!-- Single delete button (optional, can communicate with bulk logic or plain delete) -->
+                                        <button class="btn-cancel" style="font-size: 0.8rem; padding: 4px 8px;" onclick="deleteSingleVoucher(${v.id})">Delete</button>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        function toggleVoucherRow(id) {
+            const row = document.getElementById(id);
+            if (row.classList.contains('hidden')) {
+                row.classList.remove('hidden');
+            } else {
+                row.classList.add('hidden');
+            }
+        }
+
+        // --- Bulk Selection Logic ---
+        function toggleAllVouchers(source) {
+            const cbs = document.querySelectorAll('.voucher-cb');
+            cbs.forEach(cb => cb.checked = source.checked);
+            checkVoucherSelection();
+        }
+
+        function checkVoucherSelection() {
+            const checkedCount = document.querySelectorAll('.voucher-cb:checked').length;
+            const btn = document.getElementById('btnDeleteVouchers');
+            if (checkedCount > 0) {
+                btn.classList.remove('hidden');
+                btn.textContent = `Delete Selected (${checkedCount})`;
+            } else {
+                btn.classList.add('hidden');
+            }
+        }
+
+        async function deleteSelectedVouchers() {
+            const checked = document.querySelectorAll('.voucher-cb:checked');
+            if (checked.length === 0) return;
+
+            if (!confirm(`Are you sure you want to delete ${checked.length} vouchers?`)) return;
+
+            const ids = Array.from(checked).map(cb => cb.value);
+
+            try {
+                const res = await fetch('/api/admin/vouchers', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids })
+                });
+
+                if (res.ok) {
+                    alert('Vouchers deleted successfully');
+                    fetchVouchersList();
+                    document.getElementById('btnDeleteVouchers').classList.add('hidden');
+                    document.getElementById('selectAllVoucherCb').checked = false;
+                    fetchDashboardStats();
+                } else {
+                    alert('Failed to delete vouchers');
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function deleteSingleVoucher(id) {
+            if (!confirm('Delete this voucher?')) return;
+            // Reuse bulk endpoint for single
+            try {
+                const res = await fetch('/api/admin/vouchers', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids: [id] })
+                });
+                if (res.ok) { fetchVouchersList(); fetchDashboardStats(); }
+            } catch (e) { console.error(e); }
+        }
+
+        // --- Import / Sell Logic ---
+        async function loadPackagesForSelect(targetId) {
+            try {
+                const res = await fetch('/api/admin/packages');
+                const packs = await res.json();
+                const select = document.getElementById(targetId);
+                select.innerHTML = '<option value="">Select Package</option>';
+                packs.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.id;
+                    opt.textContent = `${p.name} (${Number(p.price).toLocaleString()} UGX)`;
+                    select.appendChild(opt);
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        async function submitSellVoucher() {
+            const pkgId = document.getElementById('sellPackageId').value;
+            const phone = document.getElementById('sellPhone').value;
+
+            if (!pkgId || !phone) return alert('Select package and enter phone number');
+
+            if (!confirm(`Send voucher for selected package to ${phone}?`)) return;
+
+            try {
+                const res = await fetch('/api/admin/sell-voucher', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ package_id: pkgId, phone_number: phone })
+                });
+
+                const data = await res.json();
+                if (res.ok) {
+                    // alert('Success: ' + data.message);
+                    closeDashModal('sellVoucherModal');
+                    loadStats();
+
+                    // Show Success Popup
+                    const successMsg = `The voucher <strong>(${data.code})</strong> has been sent successfully to <strong>(${phone})</strong>.`;
+                    document.getElementById('successMessage').innerHTML = successMsg;
+                    openDashModal('successModal');
+
+                } else {
+                    alert('Failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Connection error');
+            }
+        }
+
+        async function importVouchers() {
+            const pkgId = document.getElementById('importPackageId').value;
+            const fileInput = document.getElementById('voucherCsv');
+            const file = fileInput.files[0];
+
+            if (!pkgId) return alert('Select a package');
+            if (!file) return alert('Select a CSV file');
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const text = e.target.result;
+
+                // Parse CSV logic
+                // User Example: rhvu8329,, Daily,1d,, vc-545-10.21.25-daily-bundle
+                // We assume: Index 0 = Code, Index 5 = Comment.
+                // We also handle simple list (just codes) if line has no commas.
+
+                const vouchers = text
+                    .split(/\r?\n/)
+                    .map(line => {
+                        const parts = line.split(',').map(p => p.trim());
+                        if (parts.length > 1) {
+                            // Complex CSV
+                            // Index 0: Code
+                            // Index 2: Package Ref Part 1 (Daily)
+                            // Index 3: Package Ref Part 2 (1d)
+                            // Index 5: Comment
+
+                            const code = parts[0];
+                            const pRef1 = parts[2] || '';
+                            const pRef2 = parts[3] || '';
+                            const package_ref = `${pRef1} ${pRef2}`.trim();
+                            const comment = parts[5] || '';
+
+                            return { code, comment, package_ref };
+                        } else {
+                            // Simple Code
+                            return { code: parts[0], comment: '', package_ref: '' };
+                        }
+                    })
+                    .filter(v => v.code.length > 0);
+
+                if (vouchers.length === 0) return alert('No codes found in file');
+
+                try {
+                    const res = await fetch('/api/admin/vouchers/import', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ package_id: pkgId, vouchers })
+                    });
+
+                    const data = await res.json();
+                    if (res.ok) {
+                        alert(data.message);
+                        closeDashModal('importVoucherModal');
+                        if (!document.getElementById('vouchersView').classList.contains('hidden')) {
+                            fetchVouchersList();
+                        }
+                        loadStats();
+                    } else {
+                        alert(data.error || 'Import failed');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('Error during import');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+
+        // Attach Event Listeners to Sidebar Links
+        document.addEventListener('DOMContentLoaded', () => {
+            // Dashboard Home
+            document.querySelector('.breadcrumb').addEventListener('click', () => switchView('dashboard'));
+
+            // Sidebar Links
+            const pointers = document.querySelectorAll('.sidebar-nav li a');
+            pointers.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    // Check if Add button was clicked, ignore view switch
+                    if (e.target.classList.contains('add-btn')) return;
+
+                    e.preventDefault();
+                    const text = link.innerText;
+
+                    if (text.includes('Categories')) switchView('categories');
+                    else if (text.includes('Packages')) switchView('packages');
+                    else if (text.includes('Vouchers')) switchView('vouchers');
+                    else switchView('dashboard'); // Default fallback
+                });
+            });
+
+            // Add Buttons Logic
+            const addBtns = document.querySelectorAll('.add-btn');
+            addBtns.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation(); // Stop parent link click
+                    const parentText = btn.parentElement.innerText;
+                    if (parentText.includes('Categories')) openDashModal('addCategoryModal');
+                    if (parentText.includes('Packages')) openDashModal('addPackageModal');
+                });
+            });
+            loadStats();
+        });
+
+        // Fetch Admin Stats
+        async function loadStats() {
+            try {
+                const res = await fetch('/api/admin/stats');
+                const data = await res.json();
+
+                if (data.finance) {
+                    // Update SMS Balance
+                    const balEl = document.getElementById('sms-balance');
+                    if (data.sms_balance !== undefined && data.sms_balance !== null) {
+                        balEl.textContent = `SMS: ${data.sms_balance}`; // Adapt specific format if known
+                    } else {
+                        balEl.textContent = 'SMS: N/A';
+                    }
+
+                    document.getElementById('daily-trans').textContent = Number(data.finance.daily_revenue).toLocaleString();
+                    document.getElementById('weekly-trans').textContent = Number(data.finance.weekly_revenue).toLocaleString();
+                    document.getElementById('monthly-trans').textContent = Number(data.finance.monthly_revenue).toLocaleString();
+                    document.getElementById('yearly-trans').textContent = Number(data.finance.yearly_revenue).toLocaleString();
+                    document.getElementById('total-trans').textContent = Number(data.finance.total_revenue).toLocaleString();
+
+                    document.getElementById('balance').textContent = Number(data.finance.total_revenue).toLocaleString();
+                }
+
+                if (data.counts) {
+                    document.getElementById('cat-count').textContent = data.counts.categories_count;
+                    document.getElementById('pkg-count').textContent = data.counts.packages_count;
+                    document.getElementById('voucher-count').textContent = data.counts.vouchers_count;
+                    document.getElementById('bought-vouchers').textContent = data.counts.bought_vouchers_count;
+                    document.getElementById('payments-count').textContent = data.counts.payments_count;
+                }
+
+            } catch (err) {
+                console.error('Failed to load stats', err);
+            }
+        }
+
+        async function submitWithdrawal() {
+            const phone = document.getElementById('withdrawPhone').value;
+            const amount = document.getElementById('withdrawAmount').value;
+            const desc = document.getElementById('withdrawDesc').value;
+
+            if (!phone || !amount) {
+                alert('Please enter phone number and amount.');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to withdraw UGX ${amount} to ${phone}?`)) return;
+
+            try {
+                const res = await fetch('/api/admin/withdraw', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone_number: phone, amount: amount, description: desc })
+                });
+
+                const data = await res.json();
+                if (res.ok) {
+                    // alert('Withdrawal initiated successfully!');
+                    closeDashModal('withdrawModal');
+                    loadStats();
+
+                    // Show Success Popup
+                    const successMsg = `Withdrawal of <strong>${Number(amount).toLocaleString()} UGX</strong> has been successfully initiated to <strong>${phone}</strong>. Reference: ${data.data.reference || 'N/A'}`;
+                    document.getElementById('successMessage').innerHTML = successMsg;
+                    openDashModal('successModal');
+                } else {
+                    alert('Withdrawal Failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Error processing withdrawal.');
+            }
+        }
+
+        // Refresh every 30 seconds
+        setInterval(loadStats, 30000);
+    </script>
+
+    <!-- Withdraw Modal (Placed correctly outside script) -->
+    <div id="withdrawModal" class="dashboard-modal hidden">
+        <div class="dashboard-modal-content">
+            <h3>Withdraw Funds</h3>
+            <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">Enter details to withdraw from Relworx
+                account.</p>
+
+            <label>Phone Number (e.g., +256...)</label>
+            <input type="text" id="withdrawPhone" placeholder="+2567..."
+                style="width: 100%; padding: 8px; margin-bottom: 10px;">
+
+            <label>Amount (UGX)</label>
+            <input type="number" id="withdrawAmount" placeholder="Amount"
+                style="width: 100%; padding: 8px; margin-bottom: 10px;">
+
+            <label>Description</label>
+            <input type="text" id="withdrawDesc" placeholder="Reason for withdrawal"
+                style="width: 100%; padding: 8px; margin-bottom: 15px;">
+
+            <div class="modal-actions">
+                <button onclick="submitWithdrawal()" class="btn-save" style="background-color: #e74c3c;">Confirm
+                    Withdraw</button>
+                <button onclick="closeDashModal('withdrawModal')" class="btn-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
