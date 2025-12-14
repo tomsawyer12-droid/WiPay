@@ -11,8 +11,18 @@ const PORT = 5001
 
     ;
 
+const fs = require('fs');
+const path = require('path');
+
 // Middleware
 app.use(cors());
+
+function logToFile(msg) {
+    const logLine = `[${new Date().toISOString()}] ${msg}\n`;
+    fs.appendFile(path.join(__dirname, 'server_debug.log'), logLine, err => {
+        if (err) console.error('Log Error:', err);
+    });
+}
 app.use(bodyParser.json());
 
 // Redirect root to dashboard
@@ -296,6 +306,82 @@ app.post('/api/purchase', async (req, res) => {
     }
 });
 
+// 2.5 Check Payment Status (Polling for Localhost/No-Webhook environments)
+app.post('/api/check-payment-status', async (req, res) => {
+    const { transaction_ref } = req.body;
+
+    if (!transaction_ref) return res.status(400).json({ error: 'Transaction Ref required' });
+
+    try {
+        // 1. Check local DB status first
+        const [txs] = await db.query('SELECT * FROM transactions WHERE transaction_ref = ?', [transaction_ref]);
+        if (txs.length === 0) return res.status(404).json({ error: 'Transaction not found' });
+
+        const tx = txs[0];
+        // If already successful, return success immediately
+        if (tx.status === 'success') {
+            return res.json({ status: 'SUCCESS', message: 'Payment already confirmed' });
+        }
+
+        // 2. Call Relworx to check status
+        // Since we are not sure of exact param name for GET, we try POST or formatted GET as per common patterns.
+        // Assuming POST based on previous endpoints, or GET with query.
+        // Let's try POST first as it's safer for APIs usually.
+        // Actually search result said GET. Let's try GET with body or query? Standard GET shouldn't have body.
+        // URL: https://payments.relworx.com/api/mobile-money/check-request-status
+
+        // Construct GET URL
+        const checkUrl = `https://payments.relworx.com/api/mobile-money/check-request-status?account_no=${RELWORX_ACCOUNT_NO}&reference=${transaction_ref}`;
+
+        const response = await fetch(checkUrl, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/vnd.relworx.v2',
+                'Authorization': `Bearer ${RELWORX_API_KEY}`
+            }
+        });
+
+        const data = await response.json();
+        console.log(`[POLL] Status for ${transaction_ref}:`, data);
+
+        // Relworx usually returns { status: 'SUCCESS' ... }
+        if (data.status === 'SUCCESS' || data.item_status === 'SUCCESS') {
+
+            // TRIGGER SUCCESS LOGIC (Same as Webhook)
+            await db.query('UPDATE transactions SET status = "success" WHERE transaction_ref = ?', [transaction_ref]);
+
+            // Fetch Package Info
+            const [packages] = await db.query('SELECT * FROM packages WHERE id = ?', [tx.package_id]);
+            if (packages.length > 0) {
+                const selectedPackage = packages[0];
+
+                // Assign Voucher
+                const [availableVouchers] = await db.query(
+                    'SELECT * FROM vouchers WHERE package_id = ? AND is_used = FALSE LIMIT 1',
+                    [tx.package_id]
+                );
+
+                if (availableVouchers.length > 0) {
+                    const voucher = availableVouchers[0];
+                    await db.query('UPDATE vouchers SET is_used = TRUE WHERE id = ?', [voucher.id]);
+
+                    const msg = `Payment Received! Your voucher code: ${voucher.code}. Valid for ${selectedPackage.validity_hours} hrs.`;
+                    sendSMS(tx.phone_number, msg, selectedPackage.admin_id);
+                    console.log(`[POLL] Voucher ${voucher.code} assigned to ${tx.phone_number}`);
+                }
+            }
+
+            return res.json({ status: 'SUCCESS' });
+        } else {
+            return res.json({ status: 'PENDING' }); // Or FAILED
+        }
+
+    } catch (err) {
+        console.error('Polling Error:', err);
+        res.status(500).json({ error: 'Server Error' });
+    }
+});
+
 // 3. Payment Webhook
 app.post('/api/payment-webhook', async (req, res) => {
     const { transaction_id, phone_number, package_id, status } = req.body;
@@ -571,6 +657,8 @@ app.get('/api/admin/stats', authenticateToken, async (req, res) => {
         const totalRevenue = Number(transStats[0].total_revenue);
         const totalWithdrawn = Number(withdrawStats[0].total_withdrawn);
         const netBalance = totalRevenue - totalWithdrawn;
+
+        console.log(`[Stats Debug] Admin: ${req.user.id} | Rev: ${totalRevenue} | W/D: ${totalWithdrawn} | Net: ${netBalance}`);
 
         // 2. Count Stats
         const [counts] = await db.query(`
