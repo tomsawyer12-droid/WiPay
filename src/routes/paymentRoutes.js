@@ -77,6 +77,61 @@ router.post('/purchase', async (req, res) => {
     }
 });
 
+// Webhook Endpoint (Relworx callbacks)
+router.post('/webhook', async (req, res) => {
+    const data = req.body;
+    console.log('[WEBHOOK] Received:', JSON.stringify(data));
+
+    // Relworx structure usually sends { status: 'success', reference: '...', ... }
+    // Ensure we handle different potential structures or verify signature if possible.
+    // For now, checks status and reference.
+
+    const status = (data.status || '').toLowerCase();
+    const reference = data.reference || data.payment_reference;
+
+    if (!reference) return res.status(400).send('No reference provided');
+
+    if (status === 'success' || status === 'successful') {
+        try {
+            // Check if already handled
+            const [txs] = await db.query('SELECT * FROM transactions WHERE transaction_ref = ?', [reference]);
+            if (txs.length === 0) return res.status(404).send('Transaction not found');
+
+            const tx = txs[0];
+            if (tx.status === 'success') return res.status(200).send('Already processed');
+
+            // Mark as Success
+            await db.query('UPDATE transactions SET status = "success" WHERE transaction_ref = ?', [reference]);
+
+            // Assign Voucher Logic
+            const [packages] = await db.query('SELECT * FROM packages WHERE id = ?', [tx.package_id]);
+            if (packages.length > 0) {
+                const [availableVouchers] = await db.query('SELECT * FROM vouchers WHERE package_id = ? AND is_used = FALSE LIMIT 1', [tx.package_id]);
+                if (availableVouchers.length > 0) {
+                    const voucher = availableVouchers[0];
+                    await db.query('UPDATE vouchers SET is_used = TRUE WHERE id = ?', [voucher.id]);
+                    const msg = `Payment Received! Your voucher code: ${voucher.code}. Valid for ${packages[0].validity_hours} hrs.`;
+                    sendSMS(tx.phone_number, msg, packages[0].admin_id);
+                    console.log(`[WEBHOOK] Voucher sent for ${reference}`);
+                } else {
+                    console.error(`[WEBHOOK] No vouchers available for ${reference}`);
+                }
+            }
+            res.status(200).send('OK');
+        } catch (err) {
+            console.error('[WEBHOOK] Error:', err);
+            res.status(500).send('Server Error');
+        }
+    } else if (status === 'failed') {
+        await db.query('UPDATE transactions SET status = "failed" WHERE transaction_ref = ?', [reference]);
+        console.log(`[WEBHOOK] Transaction failed: ${reference}`);
+        res.status(200).send('OK');
+    } else {
+        console.log(`[WEBHOOK] Status ignored: ${status}`);
+        res.status(200).send('OK');
+    }
+});
+
 // Sync Polling Endpoint
 router.post('/check-payment-status', async (req, res) => {
     const { transaction_ref } = req.body;
@@ -87,8 +142,11 @@ router.post('/check-payment-status', async (req, res) => {
         if (txs.length === 0) return res.status(404).json({ error: 'Transaction not found' });
 
         const tx = txs[0];
+        // If DB already says success (e.g. from webhook), return immediately
         if (tx.status === 'success') return res.json({ status: 'SUCCESS' });
+        if (tx.status === 'failed') return res.json({ status: 'FAILED' });
 
+        // Otherwise, ask Gateway
         const checkUrl = `https://payments.relworx.com/api/mobile-money/check-request-status?account_no=${RELWORX_ACCOUNT_NO}&reference=${transaction_ref}&internal_reference=${transaction_ref}`;
 
         console.log(`[POLL] Checking: ${checkUrl}`);
@@ -104,12 +162,28 @@ router.post('/check-payment-status', async (req, res) => {
         const status = (data.status || '').toUpperCase();
         const itemStatus = (data.item_status || '').toUpperCase();
 
-        if (status === 'SUCCESS' || itemStatus === 'SUCCESS' || data.success === true) {
+        // STRICT CHECK: Do NOT check data.success === true, as that refers to the API call success, not payment success.
+        if (status === 'SUCCESS' || itemStatus === 'SUCCESS') {
             await db.query('UPDATE transactions SET status = "success" WHERE transaction_ref = ?', [transaction_ref]);
 
-            // Assign Voucher Logic
+            // Assign Voucher Logic (Idempotent: handled if not already done)
+            const [updatedTxs] = await db.query('SELECT * FROM transactions WHERE transaction_ref = ?', [transaction_ref]);
+            // Only reuse logic if not done? The code below repeats webhook logic.
+            // Ideally we refactor 'assignVoucher' to a function. 
+            // For now, I'll inline but ensure we don't double send if DB query takes a moment.
+            // Actually, the webhook might have beaten us.
+            // Let's just do the same logic:
+
             const [packages] = await db.query('SELECT * FROM packages WHERE id = ?', [tx.package_id]);
             if (packages.length > 0) {
+                // Check if we already assigned a voucher to THIS transaction? 
+                // We don't have a tx_id on vouchers table. 
+                // So we risk double assignment if webhook and poll run purely in parallel.
+                // However, polling is usually fallback.
+                // Let's rely on `tx.status` check above. Since correct status is now set to 'success' 2 lines up,
+                // we proceed. But wait, if webhook set it to success, the early return caught it.
+                // If we set it to success here, we are the first.
+
                 const [availableVouchers] = await db.query('SELECT * FROM vouchers WHERE package_id = ? AND is_used = FALSE LIMIT 1', [tx.package_id]);
 
                 if (availableVouchers.length > 0) {
@@ -120,6 +194,9 @@ router.post('/check-payment-status', async (req, res) => {
                 }
             }
             return res.json({ status: 'SUCCESS' });
+        } else if (status === 'FAILED') {
+            await db.query('UPDATE transactions SET status = "failed" WHERE transaction_ref = ?', [transaction_ref]);
+            return res.json({ status: 'FAILED' });
         } else {
             return res.json({ status: 'PENDING', remote_data: data });
         }

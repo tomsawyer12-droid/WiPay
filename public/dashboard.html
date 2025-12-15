@@ -28,7 +28,7 @@
 
                 <div class="nav-section">FINANCE</div>
                 <ul>
-                    <li class="active"><a href="#">Payments</a></li>
+                    <li><a href="#" onclick="switchView('payments'); return false;">Payments</a></li>
                 </ul>
 
                 <div class="nav-section">COMMS</div>
@@ -52,6 +52,10 @@
             <header class="main-header">
                 <div class="header-left" onclick="switchView('dashboard')" style="cursor: pointer;"
                     title="Go to Dashboard">
+                    <!-- Mobile Hamburger -->
+                    <div class="mobile-menu-btn hidden-desktop" onclick="toggleSidebar(); event.stopPropagation();">
+                        ☰
+                    </div>
                     <img src="img/favicon.png" alt="WiPay Logo" class="header-logo">
                     <span class="brand-name">WiPay</span>
                 </div>
@@ -59,6 +63,8 @@
                 <div class="header-center">
                     <button class="btn-sell-voucher" onclick="openDashModal('sellVoucherModal')">Sell Voucher</button>
                 </div>
+
+
 
                 <div class="header-right">
                     <span id="welcomeMsg" style="text-transform: uppercase;">WELCOME, ADMIN</span>
@@ -181,17 +187,19 @@
                     <h2>Categories</h2>
                     <button class="btn-save" onclick="openDashModal('addCategoryModal')">+ Add Category</button>
                 </div>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="categoriesTableBody">
-                        <!-- JS renders rows here -->
-                    </tbody>
-                </table>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="categoriesTableBody">
+                            <!-- JS renders rows here -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <!-- Packages View (Hidden by default) -->
@@ -200,19 +208,21 @@
                     <h2>Packages</h2>
                     <button class="btn-save" onclick="openDashModal('addPackageModal')">+ Add Package</button>
                 </div>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Price (UGX)</th>
-                            <th>Duration (Hrs)</th>
-                            <th>Category</th>
-                        </tr>
-                    </thead>
-                    <tbody id="packagesTableBody">
-                        <!-- JS renders rows here -->
-                    </tbody>
-                </table>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Price (UGX)</th>
+                                <th>Duration (Hrs)</th>
+                                <th>Category</th>
+                            </tr>
+                        </thead>
+                        <tbody id="packagesTableBody">
+                            <!-- JS renders rows here -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <!-- Vouchers View (Hidden by default) -->
@@ -225,18 +235,46 @@
                         <button class="btn-save" onclick="openDashModal('importVoucherModal')">Import Vouchers</button>
                     </div>
                 </div>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 40px;"><input type="checkbox" id="selectAllVoucherCb"
-                                    onclick="toggleAllVouchers(this)"></th>
-                            <th>Code</th>
-                        </tr>
-                    </thead>
-                    <tbody id="vouchersTableBody">
-                        <!-- JS renders rows here -->
-                    </tbody>
-                </table>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px;"><input type="checkbox" id="selectAllVoucherCb"
+                                        onclick="toggleAllVouchers(this)"></th>
+                                <th>Code</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vouchersTableBody">
+                            <!-- JS renders rows here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Payments View (Hidden by default) -->
+            <div id="paymentsView" class="view-section hidden">
+                <div class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>Transaction History</h2>
+                    <button class="btn-save" onclick="fetchPaymentsList()">Refresh</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Phone</th>
+                                <th>Amount</th>
+                                <th>Package</th>
+                                <th>Method</th>
+                                <th>Status</th>
+                                <th>Ref</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paymentsTableBody">
+                            <!-- JS renders rows here -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <!-- SMS Logs View (Hidden by default) -->
@@ -244,19 +282,21 @@
                 <div class="content-header">
                     <h2>SMS Logs</h2>
                 </div>
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>Time</th>
-                            <th>Phone</th>
-                            <th>Message</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="smsTableBody">
-                        <!-- JS renders rows here -->
-                    </tbody>
-                </table>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Phone</th>
+                                <th>Message</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="smsTableBody">
+                            <!-- JS renders rows here -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
         </main>
@@ -500,6 +540,7 @@
             'categories': document.getElementById('categoriesView'),
             'packages': document.getElementById('packagesView'),
             'vouchers': document.getElementById('vouchersView'),
+            'payments': document.getElementById('paymentsView'), // Added payments view
             'sms': document.getElementById('smsView')
         };
 
@@ -508,6 +549,7 @@
             'categories': 'Home > Dashboard > Categories',
             'packages': 'Home > Dashboard > Packages',
             'vouchers': 'Home > Dashboard > Vouchers',
+            'payments': 'Home > Dashboard > Payments', // Added payments breadcrumb
             'sms': 'Home > Dashboard > SMS Logs'
         };
 
@@ -528,6 +570,7 @@
                 if (viewName === 'categories') fetchCategoriesList();
                 if (viewName === 'packages') fetchPackagesList();
                 if (viewName === 'vouchers') fetchVouchersList();
+                if (viewName === 'payments') fetchPaymentsList(); // Call fetchPaymentsList for payments view
                 if (viewName === 'sms') fetchSMSLogs();
                 if (viewName === 'dashboard') loadStats();
             }
@@ -547,7 +590,7 @@
                 }
 
                 logs.forEach(log => {
-                    const statusColor = log.status === 'success' ? '#4caf50' : (log.status === 'pending' ? '#ff9800' : '#f44336');
+                    const statusColor = log.status === 'success' ? '#4caf50' : (log.status === 'pending' ? '#ff9800' : '#f4436');
                     tbody.innerHTML += `
                         <tr>
                             <td>${new Date(log.created_at).toLocaleString()}</td>
@@ -889,6 +932,8 @@
                     if (text.includes('Categories')) switchView('categories');
                     else if (text.includes('Packages')) switchView('packages');
                     else if (text.includes('Vouchers')) switchView('vouchers');
+                    else if (text.includes('Payments')) switchView('payments');
+                    else if (text.includes('SMS')) switchView('sms');
                     else switchView('dashboard'); // Default fallback
                 });
             });
@@ -1004,6 +1049,53 @@
             loadStats();
             loadSMSBalance();
         }, 30000);
+
+        async function fetchPaymentsList() {
+            try {
+                const res = await fetchAuth('/api/admin/transactions');
+                const txs = await res.json();
+                const tbody = document.getElementById('paymentsTableBody');
+                tbody.innerHTML = '';
+
+                if (txs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: #888;">No transactions found.</td></tr>';
+                    return;
+                }
+
+                txs.forEach(t => {
+                    const statusColor = t.status === 'success' ? '#4caf50' : '#f44336';
+                    const method = t.payment_method === 'manual' ? '<span class="badge bg-secondary">Manual</span>' : '<span class="badge bg-primary">MoMo</span>';
+
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${new Date(t.created_at).toLocaleString()}</td>
+                            <td>${t.phone_number}</td>
+                            <td>${Number(t.amount).toLocaleString()} UGX</td>
+                            <td>${t.package_name || '-'}</td>
+                            <td>${method}</td>
+                            <td style="color: ${statusColor}; font-weight: 500;">${t.status.toUpperCase()}</td>
+                            <td><small style="color:#aaa">${t.transaction_ref}</small></td>
+                        </tr>
+                    `;
+                });
+            } catch (e) { console.error(e); }
+
+        }
+
+        // --- Mobile Sidebar Toggle ---
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            console.log('Toggling sidebar', sidebar);
+            if (sidebar) sidebar.classList.toggle('open');
+
+            // Close when clicking a link (mobile UX)
+            if (window.innerWidth <= 768) {
+                const links = document.querySelectorAll('.sidebar-nav li a');
+                links.forEach(l => {
+                    l.onclick = () => sidebar.classList.remove('open');
+                });
+            }
+        }
     </script>
 
     <!-- Withdraw Modal (Placed correctly outside script) -->

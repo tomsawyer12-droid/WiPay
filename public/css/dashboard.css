@@ -364,6 +364,13 @@ body {
     display: none;
 }
 
+/* --- Responsive Table Wrapper --- */
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 /* --- Mobile Responsiveness --- */
 @media (max-width: 768px) {
     .dashboard-container {
@@ -432,12 +439,98 @@ body {
 
     .header-logo {
         height: 50px;
-        /* Slightly larger for mobile visibility if desired */
     }
 
-    /* Stack links in header-right if needed, or keep row */
+    /* --- Mobile Header Layout (Hamburger Left, Logo Center) --- */
+    /* Break .header-left logic for mobile specific layout */
+    .header-left {
+        display: flex;
+        justify-content: flex-start;
+        /* Hamburger stays left */
+        align-items: center;
+        position: relative;
+        /* Context for absolute logo */
+        width: 100%;
+    }
+
+    /* Logo & Text Wrapper: Absolutely Center It */
+    .header-left img.header-logo,
+    .header-left span.brand-name {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    /* Logo offset if text is hidden or shown together */
+    /* If both are visible, we wrap them. But keeping it simple based on current HTML structure */
+    /* Structure: [Hamburger] [Img] [Span] */
+
+    /* Let's just target the Logo Image for centering, Span might overlap or needs same treatment */
+    .header-left img.header-logo {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+    }
+
+    .brand-name {
+        /* If text follows logo, we might need to hide it or group them. 
+            For now, hiding brand text on mobile usually looks cleaner, or we group them. 
+            User said "Logo in middle". 
+         */
+        display: none;
+    }
+
+    /* Hamburger padding */
+    .mobile-menu-btn {
+        margin-right: 0;
+        z-index: 20;
+        /* Above logo if overlap */
+    }
+
+    /* Stack links in header-right */
     .header-right {
         flex-wrap: wrap;
         gap: 10px;
+        justify-content: center;
+    }
+
+    /* Modal Responsiveness */
+    .dashboard-modal-content {
+        width: 90%;
+        max-width: 350px;
+        padding: 20px;
+    }
+
+    .data-table th,
+    .data-table td {
+        padding: 10px 8px;
+        /* Reduce padding on mobile */
+        font-size: 0.85rem;
+    }
+
+    /* --- Mobile Sidebar Overlay --- */
+    .mobile-menu-btn {
+        font-size: 1.5rem;
+        color: white;
+        cursor: pointer;
+        padding: 5px 10px;
+        margin-right: 10px;
+    }
+
+    .sidebar {
+        display: block !important;
+        position: fixed;
+        top: 0;
+        left: -260px;
+        /* Hidden */
+        bottom: 0;
+        z-index: 3000;
+        transition: left 0.3s ease;
+        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
+    }
+
+    .sidebar.open {
+        left: 0;
     }
 }
