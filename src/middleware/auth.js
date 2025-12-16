@@ -16,4 +16,12 @@ function authenticateToken(req, res, next) {
     });
 }
 
-module.exports = { authenticateToken, JWT_SECRET };
+function verifySuperAdmin(req, res, next) {
+    if (req.user && req.user.role === 'super_admin') {
+        next();
+    } else {
+        res.status(403).json({ error: 'Access denied: Super Admin only' });
+    }
+}
+
+module.exports = { authenticateToken, verifySuperAdmin, JWT_SECRET };

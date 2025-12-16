@@ -14,7 +14,9 @@ router.get('/packages', async (req, res) => {
             SELECT p.id, p.name, p.price, p.validity_hours AS duration_hours
             FROM packages p
             JOIN vouchers v ON p.id = v.package_id
+            JOIN admins a ON p.admin_id = a.id
             WHERE p.admin_id = ?
+            AND (a.billing_type != 'subscription' OR a.subscription_expiry > NOW() OR a.subscription_expiry IS NULL)
             GROUP BY p.id, p.name, p.price, p.validity_hours
             HAVING COUNT(v.id) > 0
         `;

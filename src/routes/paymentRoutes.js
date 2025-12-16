@@ -100,8 +100,20 @@ router.post('/webhook', async (req, res) => {
             const tx = txs[0];
             if (tx.status === 'success') return res.status(200).send('Already processed');
 
-            // Mark as Success
-            await db.query('UPDATE transactions SET status = "success" WHERE transaction_ref = ?', [reference]);
+            // Fetch Admin Billing Type to calculate Fee
+            const [pkgs] = await db.query('SELECT admin_id FROM packages WHERE id = ?', [tx.package_id]);
+            let feeMs = 0;
+
+            if (pkgs.length > 0) {
+                const adminId = pkgs[0].admin_id;
+                const [admins] = await db.query('SELECT billing_type FROM admins WHERE id = ?', [adminId]);
+                if (admins.length > 0 && admins[0].billing_type === 'commission') {
+                    feeMs = tx.amount * 0.05;
+                }
+            }
+
+            // Mark as Success and Apply Calculated Fee (0 or 5%)
+            await db.query('UPDATE transactions SET status = "success", fee = ? WHERE transaction_ref = ?', [feeMs, reference]);
 
             // Assign Voucher Logic
             const [packages] = await db.query('SELECT * FROM packages WHERE id = ?', [tx.package_id]);
@@ -164,7 +176,19 @@ router.post('/check-payment-status', async (req, res) => {
 
         // STRICT CHECK: Do NOT check data.success === true, as that refers to the API call success, not payment success.
         if (status === 'SUCCESS' || itemStatus === 'SUCCESS') {
-            await db.query('UPDATE transactions SET status = "success" WHERE transaction_ref = ?', [transaction_ref]);
+
+            // Calculate Fee Dynamic
+            const [pkgs] = await db.query('SELECT admin_id FROM packages WHERE id = ?', [tx.package_id]);
+            let feeMs = 0;
+            if (pkgs.length > 0) {
+                const adminId = pkgs[0].admin_id;
+                const [admins] = await db.query('SELECT billing_type FROM admins WHERE id = ?', [adminId]);
+                if (admins.length > 0 && admins[0].billing_type === 'commission') {
+                    feeMs = tx.amount * 0.05;
+                }
+            }
+
+            await db.query('UPDATE transactions SET status = "success", fee = ? WHERE transaction_ref = ?', [feeMs, transaction_ref]);
 
             // Assign Voucher Logic (Idempotent: handled if not already done)
             const [updatedTxs] = await db.query('SELECT * FROM transactions WHERE transaction_ref = ?', [transaction_ref]);
@@ -213,7 +237,7 @@ router.post('/admin/withdraw', authenticateToken, async (req, res) => {
     if (!amount || !phone_number) return res.status(400).json({ error: 'Required fields missing' });
 
     try {
-        const [transStats] = await db.query("SELECT COALESCE(SUM(amount), 0) as total_revenue FROM transactions WHERE status = 'success' AND admin_id = ?", [req.user.id]);
+        const [transStats] = await db.query("SELECT COALESCE(SUM(amount - fee), 0) as total_revenue FROM transactions WHERE status = 'success' AND admin_id = ?", [req.user.id]);
         const [withdrawStats] = await db.query("SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals WHERE admin_id = ?", [req.user.id]);
 
         const currentBalance = Number(transStats[0].total_revenue) - Number(withdrawStats[0].total_withdrawn);

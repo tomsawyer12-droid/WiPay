@@ -18,6 +18,7 @@ const authRoutes = require('./src/routes/authRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 const paymentRoutes = require('./src/routes/paymentRoutes');
 const publicRoutes = require('./src/routes/publicRoutes');
+const superAdminRoutes = require('./src/routes/superAdminRoutes');
 
 app.use('/api', limiter); // Apply general limits to all API routes
 app.use('/api/auth', authLimiter); // Apply strict limits to auth routes (if you have a specific auth path suffix)
@@ -33,6 +34,7 @@ app.use('/api/login', authLimiter); // Protect login specifically
 app.use('/api', authRoutes);
 app.use('/api', publicRoutes); // Packages, Connect
 app.use('/api', paymentRoutes); // Payments - moved up to avoid admin middleware capture
+app.use('/api/super', superAdminRoutes); // Super Admin Routes
 app.use('/api', adminRoutes);  // Protected Admin Routes
 
 // Start Server

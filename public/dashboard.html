@@ -989,6 +989,9 @@
                     document.getElementById('total-trans').textContent = Number(data.finance.total_revenue).toLocaleString();
 
                     document.getElementById('balance').textContent = Number(data.finance.total_revenue).toLocaleString();
+
+                    // Check Subscription
+                    checkSubscriptionStatus(data.subscription);
                 }
 
                 if (data.counts) {
@@ -1002,8 +1005,70 @@
             } catch (err) {
                 console.error('Failed to load stats', err);
                 // Set errors on key elements
+                // Set errors on key elements
                 document.getElementById('balance').textContent = 'Error';
             }
+        }
+
+        function checkSubscriptionStatus(sub) {
+            // Remove existing clean up
+            const existingAlert = document.getElementById('sub-alert');
+            if (existingAlert) existingAlert.remove();
+
+            if (!sub || sub.billing_type !== 'subscription') return;
+            if (!sub.subscription_expiry) return; // Assume infinite if null?
+
+            const expiry = new Date(sub.subscription_expiry);
+            const now = new Date();
+            const diffMs = expiry - now;
+            const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+            if (diffMs < 0) {
+                // EXPIRED
+                showSubscriptionBlocker(expiry);
+            } else if (diffDays <= 2) {
+                // WARNING
+                showSubscriptionWarning(diffDays, expiry);
+            }
+        }
+
+        function showSubscriptionBlocker(date) {
+            const div = document.createElement('div');
+            div.id = 'sub-alert';
+            div.style.cssText = `
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(0,0,0,0.9); z-index: 9999;
+                display: flex; flex-direction: column; align-items: center; justify-content: center;
+                color: white; text-align: center;
+            `;
+            div.innerHTML = `
+                <div style="background: #222; padding: 40px; border-radius: 10px; border: 2px solid #f44336; max-width: 500px;">
+                    <h1 style="color: #f44336; margin-bottom: 20px;">SUBSCRIPTION EXPIRED</h1>
+                    <p style="font-size: 1.2rem; margin-bottom: 20px;">Your subscription expired on <strong>${date.toLocaleDateString()}</strong>.</p>
+                    <p style="color: #aaa; margin-bottom: 30px;">Your services have been suspended. Your packages are no longer visible to customers.</p>
+                    <p>Please contact support to renew your subscription.</p>
+                    <button onclick="location.reload()" style="margin-top:20px; padding: 10px 20px; border:none; background:#555; color:white; cursor:pointer;">Retry</button>
+                    <button onclick="document.getElementById('logoutLink').click()" style="margin-top:20px; margin-left:10px; padding: 10px 20px; border:none; background:#f44336; color:white; cursor:pointer;">Logout</button>
+                </div>
+            `;
+            document.body.appendChild(div);
+        }
+
+        function showSubscriptionWarning(days, date) {
+            const div = document.createElement('div');
+            div.id = 'sub-alert';
+            div.style.cssText = `
+                background: #ff9800; color: #000; padding: 15px;
+                text-align: center; font-weight: bold;
+                position: fixed; bottom: 20px; right: 20px; z-index: 9000;
+                border-radius: 5px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            `;
+            const daysLeft = Math.ceil(days);
+            div.innerHTML = `
+                ⚠ Subscription expires in ${daysLeft} day${daysLeft !== 1 ? 's' : ''} (${date.toLocaleDateString()}).
+                <button onclick="this.parentElement.remove()" style="margin-left: 10px; background:none; border:none; cursor:pointer; font-weight:bold;">✕</button>
+            `;
+            document.body.appendChild(div);
         }
 
         async function submitWithdrawal() {

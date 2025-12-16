@@ -19,6 +19,7 @@ The project now follows a professional, modular structure:
 Contains all static files served by Express.
 *   `index.html`: Public landing page (Captive Portal).
 *   `dashboard.html`: Admin management interface.
+*   `super_dashboard.html`: Super Admin interface (New).
 *   `login.html`: Admin login page.
 *   **`/css`**: Contains `style.css`, `dashboard.css`, `login.css`.
 *   **`/img`**: Contains images like `Wifi-Icon.png`, `favicon.png`.
@@ -32,6 +33,7 @@ Contains all static files served by Express.
 *   **`/routes`**:
     *   `authRoutes.js`: Login, Change Password.
     *   `adminRoutes.js`: Managing Categories, Packages, Vouchers, and Stats.
+    *   `superAdminRoutes.js`: Tenant management and System stats.
     *   `publicRoutes.js`: Fetching packages (public), Checking connection status.
     *   `paymentRoutes.js`: Payment initiation, Polling (Relworx API), Withdrawals.
 *   **`/utils`**:
@@ -91,3 +93,44 @@ Contains all static files served by Express.
 3.  **Config**: Update `.env` with credentials.
 4.  **Start Server**: `node server.js`
 5.  **Access**: `http://localhost:5002`
+
+---
+
+## 6. System Updates (Dec 2025)
+
+### Hybrid Billing Model
+The system now supports two billing types for Tenants (Admins):
+1.  **Commission Based**: The tenant pays a 5% fee on every transaction. The fee is automatically deducted from `Total Revenue` to calculate `Net Balance`.
+2.  **Subscription Based**: The tenant pays a fixed monthly fee (handled offline). The admin has full revenue access (`Net Balance` = `Total Revenue`). However, they must renew their subscription periodically.
+
+**Implementation Steps**:
+- Added `billing_type` ENUM('commission', 'subscription') to `admins` table.
+- Added `subscription_expiry` DATETIME to `admins` table.
+- Updated `paymentRoutes.js` to conditionally calculate commission:
+  - If `billing_type = 'commission'`: `commission = amount * 0.05`.
+  - If `billing_type = 'subscription'`: `commission = 0`.
+
+### Subscription Expiry & Enforcement
+For subscription-based tenants, the system enforces validity:
+- **Public Portal**: Packages are HIDDEN if the subscription is expired.
+- **Admin Dashboard**:
+  - Displays a **YELLOW WARNING** if expiry is within 2 days.
+  - Displays a **RED BLOCKING OVERLAY** if expired, preventing dashboard access until renewed.
+
+### Super Admin Dashboard (`super_dashboard.html`)
+A new high-level dashboard was introduced for the platform owner.
+- **Access**: Login via `login.html` using a user with role `super_admin`.
+- **Capabilities**:
+  - **Tenant Management**: Create new admins, View list, Delete admins.
+  - **Billing Management**: Set billing type (Commission/Subscription) during creation.
+  - **Subscription Renewal**: Update the `subscription_expiry` date for tenants.
+  - **System Stats**: View total system-wide revenue and accumulated commission (approximate platform profit).
+
+### Updated API Reference
+**Super Admin Endpoints**:
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/super/tenants` | List all tenants. |
+| `POST` | `/api/super/tenants` | Create new tenant. |
+| `PATCH` | `/api/super/tenants/:id/subscription` | Renew subscription. |
+| `GET` | `/api/super/stats` | System-wide statistics. |

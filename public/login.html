@@ -66,7 +66,11 @@
                         localStorage.setItem('wipay_user', data.username);
 
                         setTimeout(() => {
-                            window.location.href = 'dashboard.html';
+                            if (data.role === 'super_admin') {
+                                window.location.href = 'super_dashboard.html';
+                            } else {
+                                window.location.href = 'dashboard.html';
+                            }
                         }, 800);
                     } else {
                         // Fail

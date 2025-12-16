@@ -6,6 +6,8 @@ WiPay is a robust, multi-tenant WiFi billing and management system designed for 
 
 -   **Captive Portal**: Professional, responsive landing page for users to buy data.
 -   **Mobile Money Integration**: Automated Airtel/MTN payments via Relworx.
+-   **Hybrid Billing**: Supports both Commission-based (Pay-as-you-go) and Subscription-based (Monthly fee) tenant models.
+-   **Super Admin Control**: Dedicated dashboard for creating tenants, managing subscriptions, and overseeing system-wide revenue.
 -   **Voucher Management**: Bulk import, selling via SMS, and auto-delivery after payment.
 -   **Multi-Tenancy**: Single server supports multiple independent admins/routers.
 -   **Financial Dashboard**: Real-time revenue tracking, withdrawal management, and sales graphs.

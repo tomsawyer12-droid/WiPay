@@ -204,11 +204,11 @@ router.get('/admin/stats', async (req, res) => {
         // Exclude 'manual' payments from revenue stats
         const [transStats] = await db.query(`
             SELECT 
-                COALESCE(SUM(CASE WHEN status = 'success' AND payment_method != 'manual' AND DATE(created_at) = CURDATE() THEN amount ELSE 0 END), 0) as daily_revenue,
-                COALESCE(SUM(CASE WHEN status = 'success' AND payment_method != 'manual' AND YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1) THEN amount ELSE 0 END), 0) as weekly_revenue,
-                COALESCE(SUM(CASE WHEN status = 'success' AND payment_method != 'manual' AND MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE()) THEN amount ELSE 0 END), 0) as monthly_revenue,
-                COALESCE(SUM(CASE WHEN status = 'success' AND payment_method != 'manual' AND YEAR(created_at) = YEAR(CURDATE()) THEN amount ELSE 0 END), 0) as yearly_revenue,
-                COALESCE(SUM(CASE WHEN status = 'success' AND payment_method != 'manual' THEN amount ELSE 0 END), 0) as total_revenue
+                COALESCE(SUM(CASE WHEN status = 'success' AND payment_method != 'manual' AND DATE(created_at) = CURDATE() THEN (amount - fee) ELSE 0 END), 0) as daily_revenue,
+                COALESCE(SUM(CASE WHEN status = 'success' AND payment_method != 'manual' AND YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1) THEN (amount - fee) ELSE 0 END), 0) as weekly_revenue,
+                COALESCE(SUM(CASE WHEN status = 'success' AND payment_method != 'manual' AND MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE()) THEN (amount - fee) ELSE 0 END), 0) as monthly_revenue,
+                COALESCE(SUM(CASE WHEN status = 'success' AND payment_method != 'manual' AND YEAR(created_at) = YEAR(CURDATE()) THEN (amount - fee) ELSE 0 END), 0) as yearly_revenue,
+                COALESCE(SUM(CASE WHEN status = 'success' AND payment_method != 'manual' THEN (amount - fee) ELSE 0 END), 0) as total_revenue
             FROM transactions
             WHERE admin_id = ?
         `, [req.user.id]);
@@ -234,10 +234,13 @@ router.get('/admin/stats', async (req, res) => {
             ORDER BY created_at
         `, [req.user.id]);
 
+        const [adminInfo] = await db.query('SELECT billing_type, subscription_expiry FROM admins WHERE id = ?', [req.user.id]);
+
         res.json({
             finance: { ...transStats[0], total_revenue: netBalance },
             counts: counts[0],
-            graph: graphData
+            graph: graphData,
+            subscription: adminInfo[0] // Return subscription info
         });
     } catch (err) {
         console.error('Stats Error:', err);
