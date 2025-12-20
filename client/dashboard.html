@@ -3,10 +3,15 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>WIPAY - Admin Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/dashboard.css">
+    <script>
+        if (!localStorage.getItem('wipay_token')) {
+            window.location.href = 'login.html';
+        }
+    </script>
 </head>
 
 <body>
@@ -20,28 +25,38 @@
             <nav class="sidebar-nav">
                 <div class="nav-section">DATA</div>
                 <ul>
-                    <li><a href="#">Bought Vouchers</a></li>
-                    <li><a href="#">Categories <span class="add-btn">+ Add</span></a></li>
-                    <li><a href="#">Packages <span class="add-btn">+ Add</span></a></li>
-                    <li><a href="#">Vouchers</a></li>
+                    <li data-view="dashboard"><a href="#" onclick="switchView('dashboard'); return false;">Dashboard</a>
+                    </li>
+                    <li data-view="categories"><a href="#" onclick="switchView('categories'); return false;">Categories
+                            <span class="add-btn">+
+                                Add</span></a></li>
+                    <li data-view="packages"><a href="#" onclick="switchView('packages'); return false;">Packages <span
+                                class="add-btn">+
+                                Add</span></a></li>
+                    <li data-view="vouchers"><a href="#" onclick="switchView('vouchers'); return false;">Vouchers</a>
+                    </li>
                 </ul>
 
                 <div class="nav-section">FINANCE</div>
                 <ul>
-                    <li><a href="#" onclick="switchView('payments'); return false;">Payments</a></li>
+                    <li data-view="payments"><a href="#" onclick="switchView('payments'); return false;">Payments</a>
+                    </li>
                 </ul>
 
                 <div class="nav-section">COMMS</div>
                 <ul>
-                    <li><a href="#">Ads <span class="add-btn">+ Add</span></a></li>
-                    <li><a href="#" onclick="switchView('sms'); return false;">SMS</a></li>
+                    <li><a href="#" onclick="showAlert('Ads feature coming soon'); return false;">Ads <span
+                                class="add-btn">+ Add</span></a></li>
+                    <li data-view="sms"><a href="#" onclick="switchView('sms'); return false;">SMS</a></li>
                 </ul>
 
                 <div class="nav-section">SYSTEM</div>
                 <ul>
-                    <li><a href="#">Locations</a></li>
-                    <li><a href="#">Subscription</a></li>
-                    <li><a href="#">Web Configs</a></li>
+                    <li><a href="#" onclick="showAlert('Locations feature coming soon'); return false;">Locations</a>
+                    </li>
+                    <li><a href="#" onclick="openDashModal('subscriptionModal'); return false;">Subscription</a></li>
+                    <li><a href="#" onclick="showAlert('Web Configs feature coming soon'); return false;">Web
+                            Configs</a></li>
                 </ul>
             </nav>
         </aside>
@@ -54,6 +69,12 @@
                     title="Go to Dashboard">
                     <!-- Mobile Hamburger -->
                     <div class="mobile-menu-btn hidden-desktop" onclick="toggleSidebar(); event.stopPropagation();">
+                        ☰
+                    </div>
+                    <!-- Desktop Hamburger -->
+                    <div class="desktop-menu-btn hidden-mobile"
+                        onclick="toggleDesktopSidebar(); event.stopPropagation();"
+                        style="font-size: 1.5rem; margin-right: 15px; cursor: pointer; color: white;">
                         ☰
                     </div>
                     <img src="img/favicon.png" alt="WiPay Logo" class="header-logo">
@@ -82,10 +103,10 @@
 
             <!-- Mobile Navigation (Visible only on mobile) -->
             <div class="mobile-nav hidden-desktop">
-                <div class="mobile-nav-btn" onclick="switchView('dashboard')">Dashboard</div>
-                <div class="mobile-nav-btn" onclick="switchView('categories')">Categories</div>
-                <div class="mobile-nav-btn" onclick="switchView('packages')">Packages</div>
-                <div class="mobile-nav-btn" onclick="switchView('vouchers')">Vouchers</div>
+                <div class="mobile-nav-btn" data-view="dashboard" onclick="switchView('dashboard')">Dashboard</div>
+                <div class="mobile-nav-btn" data-view="categories" onclick="switchView('categories')">Categories</div>
+                <div class="mobile-nav-btn" data-view="packages" onclick="switchView('packages')">Packages</div>
+                <div class="mobile-nav-btn" data-view="vouchers" onclick="switchView('vouchers')">Vouchers</div>
             </div>
 
             <!-- Dashboard View -->
@@ -100,7 +121,9 @@
                     <div class="stat-card cyan">
                         <div class="stat-value" id="sms-balance">Loading...</div>
                         <div class="stat-label">SMS Balance</div>
-                        <div class="card-footer">Buy SMS <span class="arrow">→</span></div>
+                        <div class="card-footer" onclick="openDashModal('buySMSModal')" style="cursor: pointer;">Buy SMS
+                            <span class="arrow">→</span>
+                        </div>
                     </div>
 
                     <div class="stat-card green">
@@ -187,7 +210,7 @@
                     <h2>Categories</h2>
                     <button class="btn-save" onclick="openDashModal('addCategoryModal')">+ Add Category</button>
                 </div>
-                <div class="table-responsive">
+                <div class="table-responsive table-scroll-view">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -208,7 +231,7 @@
                     <h2>Packages</h2>
                     <button class="btn-save" onclick="openDashModal('addPackageModal')">+ Add Package</button>
                 </div>
-                <div class="table-responsive">
+                <div class="table-responsive table-scroll-view">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -232,10 +255,12 @@
                     <div style="display: flex; gap: 10px;">
                         <button id="btnDeleteVouchers" class="btn-cancel hidden"
                             onclick="deleteSelectedVouchers()">Delete Selected</button>
-                        <button class="btn-save" onclick="openDashModal('importVoucherModal')">Import Vouchers</button>
+                        <button class="btn-save"
+                            onclick="loadPackagesForImport(); openDashModal('importVoucherModal')">Import
+                            Vouchers</button>
                     </div>
                 </div>
-                <div class="table-responsive">
+                <div class="table-responsive table-scroll-view">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -257,7 +282,7 @@
                     <h2>Transaction History</h2>
                     <button class="btn-save" onclick="fetchPaymentsList()">Refresh</button>
                 </div>
-                <div class="table-responsive">
+                <div class="table-responsive table-scroll-view">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -282,7 +307,7 @@
                 <div class="content-header">
                     <h2>SMS Logs</h2>
                 </div>
-                <div class="table-responsive">
+                <div class="table-responsive table-scroll-view">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -396,6 +421,48 @@
         </div>
     </div>
 
+    <!-- Custom Alert Modal -->
+    <div id="customAlertModal" class="dashboard-modal hidden" style="z-index: 9999;">
+        <div class="alert-modal-content">
+            <h3 id="customAlertTitle" class="alert-title">Alert</h3>
+            <p id="customAlertMessage" class="alert-message">Message goes here.</p>
+            <div id="customAlertActions">
+                <button onclick="closeCustomAlert()" class="alert-btn success">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirm Modal -->
+    <div id="customConfirmModal" class="dashboard-modal hidden" style="z-index: 9999;">
+        <div class="alert-modal-content">
+            <h3 id="customConfirmTitle" class="alert-title">Confirm</h3>
+            <p id="customConfirmMessage" class="alert-message">Are you sure?</p>
+            <div>
+                <button id="confirmCancelBtn" class="alert-btn cancel">Cancel</button>
+                <button id="confirmOkBtn" class="alert-btn success">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Buy SMS Modal -->
+    <div id="buySMSModal" class="dashboard-modal hidden">
+        <div class="dashboard-modal-content">
+            <h3 class="modal-title">Buy SMS Credits</h3>
+            <div class="form-group">
+                <label>Phone Number (MoMo)</label>
+                <input type="text" id="smsPhone" placeholder="07XX XXX XXX">
+            </div>
+            <div class="form-group">
+                <label>Amount (UGX)</label>
+                <input type="number" id="smsAmount" placeholder="Enter amount" min="500">
+            </div>
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeDashModal('buySMSModal')">Cancel</button>
+                <button class="btn-submit" onclick="submitBuySMS()">Pay & Topup</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Success Modal -->
     <div id="successModal" class="dashboard-modal hidden">
         <div class="dashboard-modal-content success-content">
@@ -418,33 +485,188 @@
         </div>
     </div>
 
+    <script src="js/config.js"></script>
     <script>
+        // --- Custom Alert/Confirm Logic ---
+        function showAlert(message, type = 'success') {
+            const modal = document.getElementById('customAlertModal');
+            const title = document.getElementById('customAlertTitle');
+            const msg = document.getElementById('customAlertMessage');
+            const btn = modal.querySelector('button');
+
+            title.textContent = type === 'success' ? 'Success' : 'Error';
+            title.style.color = type === 'success' ? '#4caf50' : '#f44336';
+            msg.textContent = message;
+
+            btn.className = `alert-btn ${type}`;
+            btn.onclick = () => modal.classList.add('hidden');
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeCustomAlert() {
+            document.getElementById('customAlertModal').classList.add('hidden');
+        }
+
+        function showConfirm(message, callback) {
+            const modal = document.getElementById('customConfirmModal');
+            const msg = document.getElementById('customConfirmMessage');
+            const okBtn = document.getElementById('confirmOkBtn');
+            const cancelBtn = document.getElementById('confirmCancelBtn');
+
+            msg.textContent = message;
+
+            // Remove old listeners
+            const newOk = okBtn.cloneNode(true);
+            const newCancel = cancelBtn.cloneNode(true);
+            okBtn.parentNode.replaceChild(newOk, okBtn);
+            cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
+
+            newOk.onclick = () => {
+                modal.classList.add('hidden');
+                if (callback) callback(true);
+            };
+
+            newCancel.onclick = () => {
+                modal.classList.add('hidden');
+            };
+
+            modal.classList.remove('hidden');
+        }
+
         // --- Auth Helper ---
         async function fetchAuth(url, options = {}) {
-            const token = localStorage.getItem('wipay_token');
+            let token = localStorage.getItem('wipay_token');
             if (!token) {
                 window.location.href = 'login.html';
                 return Promise.reject('No token');
             }
 
-            const headers = {
-                'Authorization': 'Bearer ' + token,
-                ...options.headers
+            // Aggressive Sanitization: Remove any non-printable ASCII characters
+            token = token.replace(/[^\x20-\x7E]/g, '').trim();
+
+            let headers = {
+                'Authorization': `Bearer ${token}`
             };
-            const newOptions = { ...options, headers };
 
-            const response = await fetch(url, newOptions);
-
-            if (response.status === 401 || response.status === 403) {
-                localStorage.removeItem('wipay_token');
-                window.location.href = 'login.html';
-                return Promise.reject('Unauthorized');
+            // Merge options.headers safely
+            if (options.headers) {
+                for (const [key, value] of Object.entries(options.headers)) {
+                    headers[key] = value;
+                }
             }
 
-            return response;
+            // If using FormData, let browser set Content-Type header
+            if (options.body instanceof FormData) {
+                delete headers['Content-Type'];
+            }
+
+            const newOptions = { ...options, headers };
+
+            // Handle URL
+            const fullUrl = url.startsWith('/api') ? url.replace('/api', CONFIG.API_BASE_URL) : url;
+
+            try {
+                const response = await fetch(fullUrl, newOptions);
+
+                if (response.status === 401 || response.status === 403) {
+                    localStorage.removeItem('wipay_token');
+                    window.location.href = 'login.html';
+                    return Promise.reject('Unauthorized');
+                }
+                return response;
+            } catch (e) {
+                console.error('FetchAuth Error:', e);
+                // If it is a header error, retry without custom headers just to test? No, auth is needed.
+                throw e;
+            }
         }
 
-        // --- Logout ---
+        function submitBuySMS() {
+            const amount = document.getElementById('smsAmount').value;
+            const phone = document.getElementById('smsPhone').value;
+
+            if (!amount || Number(amount) < 500) {
+                showAlert('Please enter a valid amount (Min 500)');
+                return;
+            }
+            if (!phone || phone.trim().length < 10) {
+                showAlert('Please enter a valid phone number (e.g. 0770000000)');
+                return;
+            }
+
+            // Show loading state
+            const btn = document.querySelector('#buySMSModal .btn-submit');
+            const originalText = btn.innerText;
+            btn.innerText = 'Processing...';
+
+            fetchAuth(`${CONFIG.API_BASE_URL}/admin/buy-sms`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: Number(amount), phone_number: phone.trim() })
+            })
+                .then(async res => {
+                    if (!res.ok) {
+                        const errorData = await res.json().catch(() => ({}));
+                        throw new Error(errorData.error || errorData.message || 'Purchase failed');
+                    }
+                    const data = await res.json();
+
+                    if (data.status === 'pending') {
+                        // Enter Polling Mode
+                        btn.innerText = 'Waiting for approval...';
+                        btn.disabled = true;
+
+                        const pollInterval = setInterval(async () => {
+                            try {
+                                const checkRes = await fetchAuth(`${CONFIG.API_BASE_URL}/admin/sms-status/${data.reference}`);
+                                const checkData = await checkRes.json();
+
+                                if (checkData.status === 'success') {
+                                    clearInterval(pollInterval);
+                                    closeDashModal('buySMSModal');
+                                    showAlert('Payment Complete');
+                                    loadStats();
+                                    btn.innerText = originalText;
+                                    btn.disabled = false;
+                                } else if (checkData.status === 'failed') {
+                                    clearInterval(pollInterval);
+                                    showAlert('Payment Failed');
+                                    btn.innerText = originalText;
+                                    btn.disabled = false;
+                                }
+                                // If pending, continue polling...
+                            } catch (e) {
+                                console.error('Polling error', e);
+                            }
+                        }, 2000); // Check every 2s
+
+                        // Timeout after 60s
+                        setTimeout(() => {
+                            clearInterval(pollInterval);
+                            if (btn.innerText.includes('Waiting')) {
+                                btn.innerText = originalText;
+                                btn.disabled = false;
+                                showAlert('Payment timed out or is still pending.');
+                            }
+                        }, 60000);
+
+                    } else {
+                        // DEBUG: If we hit this, it means status was NOT pending.
+                        console.log('Final Status:', data.status);
+                        closeDashModal('buySMSModal');
+                        showAlert(`Payment Confirmed! Balance: ${data.balance}`);
+                        loadStats();
+                        btn.innerText = originalText;
+                    }
+                })
+                .catch(err => {
+                    console.error('Submit SMS Error:', err);
+                    showAlert(err.message || 'Purchase failed');
+                    btn.innerText = originalText;
+                });
+        }
+
         // --- Logout ---
         const logoutLink = document.getElementById('logoutLink');
         if (logoutLink) {
@@ -467,10 +689,11 @@
             document.getElementById(id).classList.add('hidden');
         }
 
+
         // --- Category Logic ---
         async function createCategory() {
             const name = document.getElementById('newCatName').value;
-            if (!name) return alert('Enter name');
+            if (!name) return showAlert('Enter name', 'error');
 
             try {
                 const res = await fetchAuth('/api/admin/categories', {
@@ -480,10 +703,13 @@
                 });
                 if (res.ok) {
                     closeDashModal('addCategoryModal');
-                    alert('Category Created!');
+                    showAlert('Category Created!', 'success');
                     loadStats();
+                    showAlert('Category Created!', 'success');
+                    loadStats();
+                    forceReload('categories');
                 } else {
-                    alert('Failed to create category');
+                    showAlert('Failed to create category', 'error');
                 }
             } catch (e) {
                 console.error(e);
@@ -517,7 +743,7 @@
                 category_id: document.getElementById('pkgCategory').value
             };
 
-            if (!data.name || !data.price || !data.category_id) return alert('Please fill required fields');
+            if (!data.name || !data.price || !data.category_id) return showAlert('Please fill required fields', 'error');
 
             const res = await fetchAuth('/api/admin/packages', {
                 method: 'POST',
@@ -528,9 +754,60 @@
             if (res.ok) {
                 closeDashModal('addPackageModal');
                 loadStats();
-                alert('Package Created!');
+                fetchPackagesList();
+                showAlert('Package Created!', 'success');
             } else {
-                alert('Failed to create package');
+                showAlert('Failed to create package', 'error');
+            }
+        }
+
+        async function loadPackagesForImport() {
+            try {
+                const res = await fetchAuth('/api/admin/packages');
+                const packages = await res.json();
+                const select = document.getElementById('importPackageId');
+                select.innerHTML = '<option value="">Select Package</option>';
+                packages.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.id;
+                    opt.textContent = `${p.name} (${Number(p.price).toLocaleString()} UGX)`;
+                    select.appendChild(opt);
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function importVouchers() {
+            const pkgId = document.getElementById('importPackageId').value;
+            const fileInput = document.getElementById('voucherCsv');
+            const file = fileInput.files[0];
+
+            if (!pkgId) return showAlert('Select a package', 'error');
+            if (!file) return showAlert('Select a CSV file', 'error');
+
+            const formData = new FormData();
+            formData.append('package_id', pkgId);
+            formData.append('file', file);
+
+            try {
+                const res = await fetchAuth('/api/admin/vouchers/import', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert(data.message, 'success');
+                    closeDashModal('importVoucherModal');
+                    loadStats();
+                    fetchVouchersList();
+                } else {
+                    showAlert(data.error || 'Import failed', 'error');
+                }
+            } catch (e) {
+                console.error(e);
+                showAlert('Upload error', 'error');
             }
         }
 
@@ -540,8 +817,18 @@
             'categories': document.getElementById('categoriesView'),
             'packages': document.getElementById('packagesView'),
             'vouchers': document.getElementById('vouchersView'),
-            'payments': document.getElementById('paymentsView'), // Added payments view
+            'payments': document.getElementById('paymentsView'),
             'sms': document.getElementById('smsView')
+        };
+
+        // Caching State
+        const loadedViews = {
+            categories: false,
+            packages: false,
+            vouchers: false,
+            payments: false,
+            sms: false,
+            dashboard: false
         };
 
         const breadcrumbMap = {
@@ -549,7 +836,7 @@
             'categories': 'Home > Dashboard > Categories',
             'packages': 'Home > Dashboard > Packages',
             'vouchers': 'Home > Dashboard > Vouchers',
-            'payments': 'Home > Dashboard > Payments', // Added payments breadcrumb
+            'payments': 'Home > Dashboard > Payments',
             'sms': 'Home > Dashboard > SMS Logs'
         };
 
@@ -566,13 +853,37 @@
                 const bc = document.querySelector('.breadcrumb');
                 if (breadcrumbMap[viewName]) bc.innerText = breadcrumbMap[viewName];
 
-                // Refresh data based on view
+                // Load Data only if not loaded yet (Basic Caching)
+                // Dashboard stats always refresh for now, or we can debounce it
+                if (viewName === 'dashboard') loadStats(); // Keep dashboard fresh
+
+                if (viewName === 'categories' && !loadedViews.categories) { fetchCategoriesList(); loadedViews.categories = true; }
+                if (viewName === 'packages' && !loadedViews.packages) { fetchPackagesList(); loadedViews.packages = true; }
+                if (viewName === 'vouchers' && !loadedViews.vouchers) { fetchVouchersList(); loadedViews.vouchers = true; }
+                if (viewName === 'payments' && !loadedViews.payments) { fetchPaymentsList(); loadedViews.payments = true; }
+                if (viewName === 'sms' && !loadedViews.sms) { fetchSMSLogs(); loadedViews.sms = true; }
+
+                // Highlight Active Nav
+                document.querySelectorAll('.sidebar-nav li, .mobile-nav-btn').forEach(el => {
+                    el.classList.remove('active');
+                    if (el.getAttribute('data-view') === viewName) {
+                        el.classList.add('active');
+                    }
+                });
+            }
+        }
+
+        // Helper to force reload (e.g. after adding item)
+        function forceReload(viewName) {
+            if (loadedViews[viewName] !== undefined) loadedViews[viewName] = false;
+            // Also reload if currently active
+            if (!document.getElementById(viewName + 'View').classList.contains('hidden')) {
                 if (viewName === 'categories') fetchCategoriesList();
                 if (viewName === 'packages') fetchPackagesList();
                 if (viewName === 'vouchers') fetchVouchersList();
-                if (viewName === 'payments') fetchPaymentsList(); // Call fetchPaymentsList for payments view
+                if (viewName === 'payments') fetchPaymentsList();
                 if (viewName === 'sms') fetchSMSLogs();
-                if (viewName === 'dashboard') loadStats();
+                loadedViews[viewName] = true;
             }
         }
 
@@ -603,8 +914,6 @@
             } catch (e) { console.error(e); }
         }
 
-
-        // --- Fetch Lists ---
         async function fetchCategoriesList() {
             try {
                 const res = await fetchAuth('/api/admin/categories');
@@ -624,7 +933,6 @@
 
         async function fetchPackagesList() {
             try {
-                // Use Admin API to get all packages + category names
                 const res = await fetchAuth('/api/admin/packages');
                 const packs = await res.json();
                 const tbody = document.getElementById('packagesTableBody');
@@ -650,14 +958,13 @@
                 tbody.innerHTML = '';
 
                 if (vouchers.length === 0) {
-                    tbody.innerHTML = '<tr><td style="text-align:center; color: #888;">No available vouchers found.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; color: #888;">No available vouchers found.</td></tr>';
                     return;
                 }
 
                 vouchers.forEach(v => {
                     const uniqueId = `v-details-${v.id}`;
                     tbody.innerHTML += `
-                        <!-- Main Row (Clickable) -->
                         <tr onclick="toggleVoucherRow('${uniqueId}')" style="cursor: pointer;">
                             <td onclick="event.stopPropagation()">
                                 <input type="checkbox" class="voucher-cb" value="${v.id}" onchange="checkVoucherSelection()">
@@ -666,9 +973,8 @@
                                 <span style="margin-right: 10px;">▶</span> ${v.code}
                             </td>
                         </tr>
-                        <!-- Details Row (Hidden) -->
                         <tr id="${uniqueId}" class="hidden" style="background: #222;">
-                            <td></td> <!-- Empty for checkbox col -->
+                            <td></td>
                             <td style="padding: 15px 25px; border-bottom: 2px solid #444;">
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9rem;">
                                     <div><strong>Package:</strong> ${v.package_name}</div>
@@ -679,7 +985,6 @@
                                         <strong>Comment:</strong> <span style="color: #bbb;">${v.comment || '-'}</span>
                                     </div>
                                     <div style="grid-column: span 2; margin-top: 5px;">
-                                        <!-- Single delete button (optional, can communicate with bulk logic or plain delete) -->
                                         <button class="btn-cancel" style="font-size: 0.8rem; padding: 4px 8px;" onclick="deleteSingleVoucher(${v.id})">Delete</button>
                                     </div>
                                 </div>
@@ -699,7 +1004,6 @@
             }
         }
 
-        // --- Bulk Selection Logic ---
         function toggleAllVouchers(source) {
             const cbs = document.querySelectorAll('.voucher-cb');
             cbs.forEach(cb => cb.checked = source.checked);
@@ -717,166 +1021,80 @@
             }
         }
 
+        // ... (Voucher Delete Logic)
         async function deleteSelectedVouchers() {
             const checked = document.querySelectorAll('.voucher-cb:checked');
             if (checked.length === 0) return;
 
-            if (!confirm(`Are you sure you want to delete ${checked.length} vouchers?`)) return;
+            showConfirm(`Are you sure you want to delete ${checked.length} vouchers?`, async () => {
+                const ids = Array.from(checked).map(cb => cb.value);
 
-            const ids = Array.from(checked).map(cb => cb.value);
+                try {
+                    const res = await fetchAuth('/api/admin/vouchers', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ids })
+                    });
 
-            try {
-                const res = await fetchAuth('/api/admin/vouchers', {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ids })
-                });
-
-                if (res.ok) {
-                    alert('Vouchers deleted successfully');
-                    fetchVouchersList();
-                    document.getElementById('btnDeleteVouchers').classList.add('hidden');
-                    document.getElementById('selectAllVoucherCb').checked = false;
-                    fetchDashboardStats();
-                } else {
-                    alert('Failed to delete vouchers');
-                }
-            } catch (e) { console.error(e); }
+                    if (res.ok) {
+                        showAlert('Vouchers deleted successfully', 'success');
+                        forceReload('vouchers');
+                        document.getElementById('btnDeleteVouchers').classList.add('hidden');
+                        document.getElementById('selectAllVoucherCb').checked = false;
+                        fetchDashboardStats();
+                    } else {
+                        showAlert('Failed to delete vouchers', 'error');
+                    }
+                } catch (e) { console.error(e); }
+            });
         }
 
         async function deleteSingleVoucher(id) {
-            if (!confirm('Delete this voucher?')) return;
-            // Reuse bulk endpoint for single
-            try {
-                const res = await fetchAuth('/api/admin/vouchers', {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ids: [id] })
-                });
-                if (res.ok) { fetchVouchersList(); fetchDashboardStats(); }
-            } catch (e) { console.error(e); }
+            showConfirm('Delete this voucher?', async () => {
+                try {
+                    const res = await fetchAuth('/api/admin/vouchers', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ids: [id] })
+                    });
+                    if (res.ok) { forceReload('vouchers'); fetchDashboardStats(); }
+                } catch (e) { console.error(e); }
+            });
         }
 
-        // --- Import / Sell Logic ---
-        async function loadPackagesForSelect(targetId) {
-            try {
-                const res = await fetchAuth('/api/admin/packages');
-                const packs = await res.json();
-                const select = document.getElementById(targetId);
-                select.innerHTML = '<option value="">Select Package</option>';
-                packs.forEach(p => {
-                    const opt = document.createElement('option');
-                    opt.value = p.id;
-                    opt.textContent = `${p.name} (${Number(p.price).toLocaleString()} UGX)`;
-                    select.appendChild(opt);
-                });
-            } catch (e) { console.error(e); }
-        }
-
+        // ... (Import/Sell Logic)
         async function submitSellVoucher() {
             const pkgId = document.getElementById('sellPackageId').value;
             const phone = document.getElementById('sellPhone').value;
 
-            if (!pkgId || !phone) return alert('Select package and enter phone number');
+            if (!pkgId || !phone) return showAlert('Select package and enter phone number', 'error');
 
-            if (!confirm(`Send voucher for selected package to ${phone}?`)) return;
-
-            try {
-                const res = await fetchAuth('/api/admin/sell-voucher', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ package_id: pkgId, phone_number: phone })
-                });
-
-                const data = await res.json();
-                if (res.ok) {
-                    // alert('Success: ' + data.message);
-                    closeDashModal('sellVoucherModal');
-                    loadStats();
-
-                    // Show Success Popup
-                    const successMsg = `The voucher <strong>(${data.code})</strong> has been sent successfully to <strong>(${phone})</strong>.`;
-                    document.getElementById('successMessage').innerHTML = successMsg;
-                    openDashModal('successModal');
-
-                } else {
-                    alert('Failed: ' + (data.error || 'Unknown error'));
-                }
-            } catch (e) {
-                console.error(e);
-                alert('Connection error');
-            }
-        }
-
-        async function importVouchers() {
-            const pkgId = document.getElementById('importPackageId').value;
-            const fileInput = document.getElementById('voucherCsv');
-            const file = fileInput.files[0];
-
-            if (!pkgId) return alert('Select a package');
-            if (!file) return alert('Select a CSV file');
-
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                const text = e.target.result;
-
-                // Parse CSV logic
-                // User Example: rhvu8329,, Daily,1d,, vc-545-10.21.25-daily-bundle
-                // We assume: Index 0 = Code, Index 5 = Comment.
-                // We also handle simple list (just codes) if line has no commas.
-
-                const vouchers = text
-                    .split(/\r?\n/)
-                    .map(line => {
-                        const parts = line.split(',').map(p => p.trim());
-                        if (parts.length > 1) {
-                            // Complex CSV
-                            // Index 0: Code
-                            // Index 2: Package Ref Part 1 (Daily)
-                            // Index 3: Package Ref Part 2 (1d)
-                            // Index 5: Comment
-
-                            const code = parts[0];
-                            const pRef1 = parts[2] || '';
-                            const pRef2 = parts[3] || '';
-                            const package_ref = `${pRef1} ${pRef2}`.trim();
-                            const comment = parts[5] || '';
-
-                            return { code, comment, package_ref };
-                        } else {
-                            // Simple Code
-                            return { code: parts[0], comment: '', package_ref: '' };
-                        }
-                    })
-                    .filter(v => v.code.length > 0);
-
-                if (vouchers.length === 0) return alert('No codes found in file');
-
+            showConfirm(`Send voucher for selected package to ${phone}?`, async () => {
                 try {
-                    const res = await fetchAuth('/api/admin/vouchers/import', {
+                    const res = await fetchAuth('/api/admin/sell-voucher', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ package_id: pkgId, vouchers })
+                        body: JSON.stringify({ package_id: pkgId, phone_number: phone })
                     });
 
                     const data = await res.json();
                     if (res.ok) {
-                        alert(data.message);
-                        closeDashModal('importVoucherModal');
-                        if (!document.getElementById('vouchersView').classList.contains('hidden')) {
-                            fetchVouchersList();
-                        }
+                        closeDashModal('sellVoucherModal');
                         loadStats();
+                        loadStats();
+                        forceReload('vouchers');
+                        fetchSMSLogs();
+                        // Special Success Modal for Sell Voucher (keep existing one as it is specific)
+                        document.getElementById('successMessage').textContent = `Voucher sent to ${phone}.`;
+                        openDashModal('successModal');
                     } else {
-                        alert(data.error || 'Import failed');
+                        showAlert(data.error || 'Failed', 'error');
                     }
-                } catch (err) {
-                    console.error(err);
-                    alert('Error during import');
-                }
-            };
-            reader.readAsText(file);
+                } catch (e) { console.error(e); }
+            });
         }
+
+
 
 
         async function submitChangePass() {
@@ -884,8 +1102,8 @@
             const newP = document.getElementById('newPass').value;
             const conf = document.getElementById('confirmPass').value;
 
-            if (!curr || !newP || !conf) return alert('All fields required');
-            if (newP !== conf) return alert('New passwords do not match');
+            if (!curr || !newP || !conf) return showAlert('All fields required', 'error');
+            if (newP !== conf) return showAlert('New passwords do not match', 'error');
 
             try {
                 const res = await fetchAuth('/api/admin/change-password', {
@@ -896,15 +1114,17 @@
 
                 const data = await res.json();
                 if (res.ok) {
-                    alert('Password Updated! Please login again.');
-                    localStorage.removeItem('wipay_token');
-                    window.location.href = 'login.html';
+                    showAlert('Password Updated! Please login again.', 'success');
+                    setTimeout(() => {
+                        localStorage.removeItem('wipay_token');
+                        window.location.href = 'login.html';
+                    }, 2000);
                 } else {
-                    alert(data.error || 'Failed to update password');
+                    showAlert(data.error || 'Failed to update password', 'error');
                 }
             } catch (e) {
                 console.error(e);
-                alert('Connection Error');
+                showAlert('Connection Error', 'error');
             }
         }
 
@@ -919,24 +1139,7 @@
             // Dashboard Home
             document.querySelector('.breadcrumb').addEventListener('click', () => switchView('dashboard'));
 
-            // Sidebar Links
-            const pointers = document.querySelectorAll('.sidebar-nav li a');
-            pointers.forEach(link => {
-                link.addEventListener('click', (e) => {
-                    // Check if Add button was clicked, ignore view switch
-                    if (e.target.classList.contains('add-btn')) return;
 
-                    e.preventDefault();
-                    const text = link.innerText;
-
-                    if (text.includes('Categories')) switchView('categories');
-                    else if (text.includes('Packages')) switchView('packages');
-                    else if (text.includes('Vouchers')) switchView('vouchers');
-                    else if (text.includes('Payments')) switchView('payments');
-                    else if (text.includes('SMS')) switchView('sms');
-                    else switchView('dashboard'); // Default fallback
-                });
-            });
 
             // Add Buttons Logic
             const addBtns = document.querySelectorAll('.add-btn');
@@ -952,6 +1155,34 @@
             loadStats();
             loadSMSBalance(); // Dedicated call
         });
+
+        // --- Load Stats ---
+        async function loadStats() {
+            try {
+                const res = await fetchAuth('/api/admin/stats');
+                const data = await res.json();
+
+                if (data.finance) {
+                    const fmt = (n) => Number(n).toLocaleString();
+                    document.getElementById('balance').textContent = fmt(data.finance.total_revenue) + ' UGX';
+                    document.getElementById('daily-trans').textContent = fmt(data.finance.daily_revenue);
+                    document.getElementById('weekly-trans').textContent = fmt(data.finance.weekly_revenue);
+                    document.getElementById('monthly-trans').textContent = fmt(data.finance.monthly_revenue);
+                    document.getElementById('yearly-trans').textContent = fmt(data.finance.yearly_revenue);
+                    document.getElementById('total-trans').textContent = fmt(data.finance.total_revenue);
+                }
+
+                if (data.counts) {
+                    document.getElementById('cat-count').textContent = data.counts.categories_count || 0;
+                    document.getElementById('pkg-count').textContent = data.counts.packages_count || 0;
+                    document.getElementById('voucher-count').textContent = data.counts.vouchers_count || 0;
+                    document.getElementById('bought-vouchers').textContent = data.counts.bought_vouchers_count || 0;
+                    document.getElementById('payments-count').textContent = data.counts.transactions_count || 0;
+                }
+            } catch (e) {
+                console.error('Load Stats Error:', e);
+            }
+        }
 
         // Fetch SMS Balance (Separate)
         async function loadSMSBalance() {
@@ -1024,34 +1255,40 @@
             const diffDays = diffMs / (1000 * 60 * 60 * 24);
 
             if (diffMs < 0) {
-                // EXPIRED
-                showSubscriptionBlocker(expiry);
+                // EXPIRED - Show Banner instead of Blocker
+                showExpiryBanner(expiry);
             } else if (diffDays <= 2) {
                 // WARNING
                 showSubscriptionWarning(diffDays, expiry);
             }
         }
 
-        function showSubscriptionBlocker(date) {
-            const div = document.createElement('div');
-            div.id = 'sub-alert';
-            div.style.cssText = `
-                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-                background: rgba(0,0,0,0.9); z-index: 9999;
-                display: flex; flex-direction: column; align-items: center; justify-content: center;
-                color: white; text-align: center;
+        function showExpiryBanner(date) {
+            // Remove existing banner if any
+            const existing = document.getElementById('expiry-banner');
+            if (existing) existing.remove();
+
+            const banner = document.createElement('div');
+            banner.id = 'expiry-banner';
+            // Use lighter colors and auto width to match parent padding
+            banner.style.cssText = `
+                background: #ffcdd2;
+                color: #c62828;
+                padding: 10px;
+                text-align: center;
+                font-weight: 500;
+                font-size: 0.9rem;
+                margin-bottom: 15px;
+                border-radius: 4px;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.1);
             `;
-            div.innerHTML = `
-                <div style="background: #222; padding: 40px; border-radius: 10px; border: 2px solid #f44336; max-width: 500px;">
-                    <h1 style="color: #f44336; margin-bottom: 20px;">SUBSCRIPTION EXPIRED</h1>
-                    <p style="font-size: 1.2rem; margin-bottom: 20px;">Your subscription expired on <strong>${date.toLocaleDateString()}</strong>.</p>
-                    <p style="color: #aaa; margin-bottom: 30px;">Your services have been suspended. Your packages are no longer visible to customers.</p>
-                    <p>Please contact support to renew your subscription.</p>
-                    <button onclick="location.reload()" style="margin-top:20px; padding: 10px 20px; border:none; background:#555; color:white; cursor:pointer;">Retry</button>
-                    <button onclick="document.getElementById('logoutLink').click()" style="margin-top:20px; margin-left:10px; padding: 10px 20px; border:none; background:#f44336; color:white; cursor:pointer;">Logout</button>
-                </div>
-            `;
-            document.body.appendChild(div);
+            banner.innerHTML = `<i class="fas fa-exclamation-circle" style="margin-right: 8px;"></i> <strong>SUBSCRIPTION EXPIRED:</strong> Client packages are hidden. Please renew.`;
+
+            // Insert at the top of main-content (pushes header down)
+            const content = document.querySelector('.main-content');
+            if (content) {
+                content.insertBefore(banner, content.firstChild);
+            }
         }
 
         function showSubscriptionWarning(days, date) {
@@ -1148,19 +1385,43 @@
         }
 
         // --- Mobile Sidebar Toggle ---
+        // --- Sidebar Logic ---
         function toggleSidebar() {
-            const sidebar = document.querySelector('.sidebar');
-            console.log('Toggling sidebar', sidebar);
-            if (sidebar) sidebar.classList.toggle('open');
-
-            // Close when clicking a link (mobile UX)
-            if (window.innerWidth <= 768) {
-                const links = document.querySelectorAll('.sidebar-nav li a');
-                links.forEach(l => {
-                    l.onclick = () => sidebar.classList.remove('open');
-                });
-            }
+            document.querySelector('.sidebar').classList.toggle('open');
         }
+
+        // Desktop Sidebar Toggle
+        function toggleDesktopSidebar() {
+            document.querySelector('.sidebar').classList.toggle('collapsed');
+        }
+
+        function initMobileMenus() {
+            const sidebar = document.querySelector('.sidebar');
+            const links = document.querySelectorAll('.sidebar-nav li a');
+            const hamburger = document.querySelector('.mobile-menu-btn');
+
+            // Close sidebar when clicking any link
+            links.forEach(l => {
+                l.addEventListener('click', () => {
+                    if (window.innerWidth <= 768) {
+                        sidebar.classList.remove('open');
+                    }
+                });
+            });
+
+            // Close sidebar when clicking outside
+            document.addEventListener('click', (e) => {
+                if (window.innerWidth <= 768 && sidebar.classList.contains('open')) {
+                    // If click is NOT inside sidebar AND NOT the hamburger button
+                    if (!sidebar.contains(e.target) && !hamburger.contains(e.target)) {
+                        sidebar.classList.remove('open');
+                    }
+                }
+            });
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', initMobileMenus);
     </script>
 
     <!-- Withdraw Modal (Placed correctly outside script) -->

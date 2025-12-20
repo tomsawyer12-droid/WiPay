@@ -9,9 +9,9 @@ const app = express();
 const PORT = 5002;
 
 // Middleware
-app.use(cors());
+app.use(cors()); // Allow all origins for now
 app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'public'))); // Serve static files from 'public'
+app.use(express.static(path.join(__dirname, '../client'))); // Serve frontend files
 
 // Routes
 const authRoutes = require('./src/routes/authRoutes');

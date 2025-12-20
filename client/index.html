@@ -42,7 +42,7 @@
             <div class="loading">Loading packages...</div>
         </div>
         <div id="no-admin-msg" class="hidden" style="text-align:center; padding: 20px; color: #666;">
-            <p>Please scan the <strong>QR Code</strong> provided by your WiFi Agent to view packages.</p>
+            <p>Packages are Currently Unavailable, Please Contact the Admin for more information.</p>
         </div>
 
         <!-- Info Footer -->
@@ -78,6 +78,7 @@
         </div>
     </div>
 
+    <script src="js/config.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const packagesContainer = document.getElementById('packages-container');
@@ -98,7 +99,7 @@
             // --- CONFIGURATION FOR ROUTER DEPLOYMENT ---
             // Change this value to the Admin ID (e.g., 1 or 2) when installing on a specific router.
             // If null, it will try to read from the URL (?admin=1).
-            const ROUTER_ADMIN_ID = 18;
+            const ROUTER_ADMIN_ID = 2;
 
             let selectedPackageId = null;
             let selectedPackagePrice = 0;
@@ -109,12 +110,13 @@
             const urlAdminId = urlParams.get('admin');
             const targetAdminId = ROUTER_ADMIN_ID || urlAdminId;
 
-            let fetchUrl = '/api/packages';
+            let fetchUrl = `${CONFIG.API_BASE_URL}/packages`;
             if (targetAdminId) fetchUrl += `?admin_id=${targetAdminId}`;
 
             fetch(fetchUrl)
                 .then(res => res.json())
                 .then(packages => {
+                    // ... (no change)
                     const packagesContainer = document.getElementById('packages-container');
                     packagesContainer.innerHTML = '';
 
@@ -143,6 +145,7 @@
                     if (packagesContainer) packagesContainer.innerHTML = '<div class="error" style="color:red">Failed to load packages.</div>';
                 });
 
+            // ... (no change in global functions)
             // Global function to be called from HTML onclick
             window.initiatePay = function (id, name, price) {
                 selectedPackageId = id;
@@ -156,28 +159,26 @@
             // Voucher Logic (Simulation)
             voucherRedeemBtn.addEventListener('click', () => {
                 const code = voucherCodeInput.value.trim();
-                if (!code) {
-                    showMessage('Please enter a voucher code', 'error');
-                    return;
-                }
-                showMessage('Verifying voucher...', 'info');
-                // Simulate API call
-                setTimeout(() => {
-                    showMessage('Invalid or expired voucher', 'error');
-                }, 1500);
+                // ...
             });
 
-            // Close Modal Logic
+            // Modal Logic
             function closeModal() {
                 paymentModal.classList.add('hidden');
-                modalPhoneNumber.value = '';
                 modalPayBtn.disabled = false;
+                modalPayBtn.textContent = 'Pay Now';
+                modalPhoneNumber.value = '';
             }
-            closeModalBtn.onclick = closeModal;
-            modalCancelBtn.onclick = closeModal;
-            paymentModal.onclick = (e) => {
-                if (e.target === paymentModal) closeModal();
-            };
+
+            closeModalBtn.addEventListener('click', closeModal);
+            modalCancelBtn.addEventListener('click', closeModal);
+
+            // Close on click outside
+            window.addEventListener('click', (e) => {
+                if (e.target === paymentModal) {
+                    closeModal();
+                }
+            });
 
             // Pay Button Logic
             modalPayBtn.addEventListener('click', async () => {
@@ -191,7 +192,7 @@
                 modalPayBtn.textContent = 'Processing...';
 
                 try {
-                    const purchaseRes = await fetch('/api/purchase', {
+                    const purchaseRes = await fetch(`${CONFIG.API_BASE_URL}/purchase`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ phone_number: phoneNumber, package_id: selectedPackageId })
@@ -202,7 +203,7 @@
                         closeModal();
                         showMessage(purchaseData.message, 'success');
 
-                        // Start Polling
+                        // Start Polling with Progress Bar
                         startPolling(purchaseData.transaction_id, phoneNumber, selectedPackageId);
                     } else {
                         showMessage(purchaseData.error || 'Purchase failed', 'error');
@@ -217,21 +218,22 @@
 
 
             function startPolling(txRef, phone, pkgId) {
-                showMessage(`Checking payment status...`, 'info');
+                showProgress('Waiting for payment confirmation...');
 
                 let checkCount = 0;
-                const maxChecks = 60; // 5 mins total (5s * 60)
+                const maxChecks = 60; // 5 mins total
 
                 const intervalId = setInterval(async () => {
                     checkCount++;
                     if (checkCount > maxChecks) {
                         clearInterval(intervalId);
-                        showMessage('Payment timed out or taking too long. Check SMS.', 'error');
+                        hideProgress();
+                        showMessage('Payment timed out. Please check SMS.', 'error');
                         return;
                     }
 
                     try {
-                        const res = await fetch('/api/check-payment-status', {
+                        const res = await fetch(`${CONFIG.API_BASE_URL}/check-payment-status`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ transaction_ref: txRef })
@@ -240,6 +242,7 @@
 
                         if (data.status === 'SUCCESS') {
                             clearInterval(intervalId);
+                            hideProgress();
                             showMessage('Payment Confirmed! Voucher sent via SMS.', 'success');
                             // Optional: Automatically connect?
                             // checkConnection(phone);
@@ -247,30 +250,54 @@
                     } catch (e) {
                         console.error('Polling error', e);
                     }
-                }, 5000); // Check every 5 seconds
+                }, 5000);
             }
 
-            async function checkConnection(phone) {
-                const res = await fetch('/api/connect', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone_number: phone })
-                });
-                const data = await res.json();
-                if (data.status === 'connected') {
-                    showMessage(`Connected! Redirecting...`, 'success');
+            // --- UX Helpers ---
+
+            function showMessage(msg, type) {
+                // Remove existing
+                const existing = document.querySelectorAll('.popup-toast');
+                existing.forEach(el => el.remove());
+
+                const toast = document.createElement('div');
+                toast.className = `popup-toast ${type}`;
+                toast.innerHTML = type === 'success' ? `✅ ${msg}` : (type === 'error' ? `❌ ${msg}` : `ℹ️ ${msg}`);
+
+                document.body.appendChild(toast);
+
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    toast.style.top = '-100px';
+                    setTimeout(() => toast.remove(), 500);
+                }, 5000);
+            }
+
+            function showProgress(text) {
+                let overlay = document.getElementById('progressOverlay');
+                if (!overlay) {
+                    overlay = document.createElement('div');
+                    overlay.id = 'progressOverlay';
+                    overlay.className = 'payment-progress-overlay';
+                    overlay.innerHTML = `
+                        <div class="progress-container">
+                            <div class="progress-text" id="progressText">${text}</div>
+                            <div class="progress-bar-track">
+                                <div class="progress-bar-fill indeterminate"></div>
+                            </div>
+                            <div style="margin-top:15px; color:#aaa; font-size:0.9rem;">Please approve the prompt on your phone</div>
+                        </div>
+                    `;
+                    document.body.appendChild(overlay);
                 } else {
-                    showMessage(data.message, 'error');
+                    document.getElementById('progressText').textContent = text;
+                    overlay.classList.remove('hidden');
                 }
             }
 
-            function showMessage(msg, type) {
-                statusMessage.textContent = msg;
-                statusMessage.className = `status-message ${type}`;
-                statusMessage.classList.remove('hidden');
-                setTimeout(() => {
-                    statusMessage.classList.add('hidden');
-                }, 5000);
+            function hideProgress() {
+                const overlay = document.getElementById('progressOverlay');
+                if (overlay) overlay.classList.add('hidden');
             }
         });
     </script>

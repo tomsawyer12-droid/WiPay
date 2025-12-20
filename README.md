@@ -2,15 +2,27 @@
 
 WiPay is a robust, multi-tenant WiFi billing and management system designed for ISPs and Hotspot owners in Uganda. It allows admins to manage packages, sell vouchers, and accept Mobile Money payments automated via Relworx.
 
-## 🚀 Features
+## 🚀 Features (Version 1.0)
 
--   **Captive Portal**: Professional, responsive landing page for users to buy data.
--   **Mobile Money Integration**: Automated Airtel/MTN payments via Relworx.
--   **Hybrid Billing**: Supports both Commission-based (Pay-as-you-go) and Subscription-based (Monthly fee) tenant models.
--   **Super Admin Control**: Dedicated dashboard for creating tenants, managing subscriptions, and overseeing system-wide revenue.
--   **Voucher Management**: Bulk import, selling via SMS, and auto-delivery after payment.
--   **Multi-Tenancy**: Single server supports multiple independent admins/routers.
--   **Financial Dashboard**: Real-time revenue tracking, withdrawal management, and sales graphs.
+### 🖥️ Admin Dashboard
+-   **Security**: Secure Login with JWT authentication, error toasts, and auto-redirection.
+-   **UI/UX**: Dark mode aesthetic, responsive design with **Mobile Hamburger Menu** and **Desktop Sidebar Toggle**.
+-   **Performance**: **Client-side caching** for instant smooth navigation between views.
+
+### 💰 Payment & Finance
+-   **SMS Integration**: Purchase SMS credits via Relworx Mobile Money.
+-   **Improved UX**: Polling mechanism prevents premature success messages; users see "Waiting for Approval..." until payment confirms.
+-   **Real-time Stats**: Track Daily/Weekly Revenue, Voucher Sales, and SMS Balance instantly.
+
+### 🎟️ Voucher & Package Management
+-   **Packages**: Create, Edit, and Delete internet packages (Time & Data limits).
+-   **Bulk Import**: Upload large CSV files securely (Server-side streaming) to generate thousands of vouchers.
+-   **Smart Sales**: "Sell Voucher" modal allows sending voucher codes directly to a client's phone via SMS.
+-   **Inventory**: Filter, Search, and Bulk Delete vouchers.
+
+### ⚙️ System
+-   **Multi-Tenancy**: Single instance supports multiple router admins.
+-   **Role Management**: Super Admin vs. Standard Admin capabilities.
 
 ## 📂 Project Structure
 

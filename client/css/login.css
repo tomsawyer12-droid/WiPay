@@ -168,3 +168,50 @@ body::before {
 .login-btn:active {
     transform: translateY(0);
 }
+
+/* Responsive Fixes */
+@media (max-width: 480px) {
+    .login-container {
+        width: 90%;
+        max-width: 340px;
+        /* Constrain closer to card size */
+        padding: 1.5rem;
+        /* Slightly reduced padding */
+    }
+}
+
+.login-error {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto;
+    /* Fit text */
+    min-width: fit-content;
+    max-width: 80%;
+    /* Don't touch edges */
+    background: #ff4757;
+    /* Bright Red */
+    color: white;
+    padding: 15px 20px;
+    border-radius: 50px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    font-weight: 500;
+    z-index: 1000;
+    display: none;
+    text-align: center;
+    border: none;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        top: -50px;
+        opacity: 0;
+    }
+
+    to {
+        top: 20px;
+        opacity: 1;
+    }
+}

@@ -83,6 +83,25 @@ router.patch('/tenants/:id/subscription', async (req, res) => {
     }
 });
 
+// Reset Tenant Password
+router.patch('/tenants/:id/password', async (req, res) => {
+    const tenantId = req.params.id;
+    const { new_password } = req.body;
+
+    if (!new_password) return res.status(400).json({ error: 'New password is required' });
+
+    try {
+        const salt = await bcrypt.genSalt(10);
+        const hash = await bcrypt.hash(new_password, salt);
+
+        await db.query('UPDATE admins SET password_hash = ? WHERE id = ?', [hash, tenantId]);
+        res.json({ message: 'Password reset successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to reset password' });
+    }
+});
+
 // System Stats
 router.get('/stats', async (req, res) => {
     try {

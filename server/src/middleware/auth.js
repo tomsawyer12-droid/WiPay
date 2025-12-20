@@ -1,7 +1,11 @@
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your_super_secret_key_change_this';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET is not defined in .env');
+    process.exit(1);
+}
 
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];

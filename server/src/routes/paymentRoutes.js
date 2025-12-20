@@ -68,6 +68,7 @@ router.post('/purchase', async (req, res) => {
                 status: 'pending'
             });
         } else {
+            console.error('[Purchase] Gateway Failed:', JSON.stringify(paymentData, null, 2));
             await db.query('UPDATE transactions SET status = "failed" WHERE transaction_ref = ?', [reference]);
             res.status(400).json({ error: 'Payment gateway failed', details: paymentData });
         }
@@ -91,6 +92,19 @@ router.post('/webhook', async (req, res) => {
 
     if (!reference) return res.status(400).send('No reference provided');
 
+    // --- HANDLE SMS TOPUP (SMS- Prefix) ---
+    if (reference.startsWith('SMS-')) {
+        if (status === 'success' || status === 'successful') {
+            await db.query('UPDATE sms_fees SET status = "success" WHERE reference = ?', [reference]);
+            console.log(`[WEBHOOK] SMS Topup Successful: ${reference}`);
+        } else if (status === 'failed') {
+            await db.query('UPDATE sms_fees SET status = "failed" WHERE reference = ?', [reference]);
+            console.log(`[WEBHOOK] SMS Topup Failed: ${reference}`);
+        }
+        return res.status(200).send('OK');
+    }
+
+    // --- HANDLE STANDARD TRANSACTIONS ---
     if (status === 'success' || status === 'successful') {
         try {
             // Check if already handled
@@ -285,9 +299,6 @@ router.post('/admin/withdraw', authenticateToken, async (req, res) => {
 });
 
 // Admin SMS Balance
-router.get('/admin/sms-balance', authenticateToken, async (req, res) => {
-    // Basic impl for now, normally calls smsService
-    res.json({ balance: 0 }); // Placeholder or move full logic here
-});
+
 
 module.exports = router;

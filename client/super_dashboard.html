@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>WIPAY - Super Admin</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/dashboard.css">
@@ -18,6 +18,11 @@
         }
     </style>
 </head>
+<script>
+    if (!localStorage.getItem('wipay_token')) {
+        window.location.href = 'login.html';
+    }
+</script>
 
 <body>
     <div class="dashboard-container">
@@ -41,6 +46,10 @@
             <!-- New Main Header -->
             <header class="main-header">
                 <div class="header-left">
+                    <!-- Mobile Hamburger -->
+                    <div class="mobile-menu-btn hidden-desktop" onclick="toggleSidebar(); event.stopPropagation();">
+                        ☰
+                    </div>
                     <img src="img/favicon.png" alt="WiPay Logo" class="header-logo">
                     <span class="brand-name">WiPay Super</span>
                 </div>
@@ -55,9 +64,13 @@
             <div id="tenantsView" class="view-section">
                 <div class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
                     <h2>Tenants (Admins)</h2>
-                    <button class="btn-save" onclick="openModal('addTenantModal')">+ Add Tenant</button>
+                    <div>
+                        <button class="btn-save" style="background-color: #ff9800; margin-right: 10px;"
+                            onclick="openGlobalResetModal()">Reset Password</button>
+                        <button class="btn-save" onclick="openModal('addTenantModal')">+ Add Tenant</button>
+                    </div>
                 </div>
-                <div class="table-responsive">
+                <div class="table-responsive table-scroll-view">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -138,15 +151,116 @@
             </div>
         </div>
     </div>
+    </div>
+    </div>
 
+    <!-- Custom Alert Modal -->
+    <div id="customAlertModal" class="dashboard-modal hidden" style="z-index: 9999;">
+        <div class="alert-modal-content">
+            <h3 id="customAlertTitle" class="alert-title">Alert</h3>
+            <p id="customAlertMessage" class="alert-message">Message goes here.</p>
+            <div id="customAlertActions">
+                <button onclick="closeCustomAlert()" class="alert-btn success">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirm Modal -->
+    <div id="customConfirmModal" class="dashboard-modal hidden" style="z-index: 9999;">
+        <div class="alert-modal-content">
+            <h3 id="customConfirmTitle" class="alert-title">Confirm</h3>
+            <p id="customConfirmMessage" class="alert-message">Are you sure?</p>
+            <div>
+                <button id="confirmCancelBtn" class="alert-btn cancel">Cancel</button>
+                <button id="confirmOkBtn" class="alert-btn success">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reset Password Modal -->
+    <div id="resetPasswordModal" class="dashboard-modal hidden">
+        <div class="dashboard-modal-content">
+            <h3>Reset Tenant Password</h3>
+            <p style="color:#aaa; font-size:0.9rem; margin-bottom:10px;">Select a tenant and enter a new password.</p>
+
+            <label style="color: white; font-size: 0.9em; display: block; margin-bottom: 5px;">Select Tenant:</label>
+            <select id="resetTenantSelect" style="width: 100%; padding: 10px; margin-bottom: 15px;">
+                <!-- Populated by JS -->
+            </select>
+
+            <input type="password" id="resetNewPass" placeholder="New Password"
+                style="width: 100%; padding: 10px; margin-bottom: 20px;">
+
+            <div class="modal-actions">
+                <button onclick="submitResetPassword()" class="btn-save" style="background-color: #ff9800;">Reset
+                    Password</button>
+                <button onclick="closeModal('resetPasswordModal')" class="btn-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
     <script>
+        // --- Custom Alert/Confirm Logic ---
+        function showAlert(message, type = 'success') {
+            const modal = document.getElementById('customAlertModal');
+            const title = document.getElementById('customAlertTitle');
+            const msg = document.getElementById('customAlertMessage');
+            const btn = modal.querySelector('button');
+
+            title.textContent = type === 'success' ? 'Success' : 'Error';
+            title.style.color = type === 'success' ? '#4caf50' : '#f44336';
+            msg.textContent = message;
+
+            btn.className = `alert-btn ${type}`;
+            btn.onclick = () => modal.classList.add('hidden');
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeCustomAlert() {
+            document.getElementById('customAlertModal').classList.add('hidden');
+        }
+
+        function showConfirm(message, callback) {
+            const modal = document.getElementById('customConfirmModal');
+            const msg = document.getElementById('customConfirmMessage');
+            const okBtn = document.getElementById('confirmOkBtn');
+            const cancelBtn = document.getElementById('confirmCancelBtn');
+
+            msg.textContent = message;
+
+            // Remove old listeners to prevent stacking
+            const newOk = okBtn.cloneNode(true);
+            const newCancel = cancelBtn.cloneNode(true);
+            okBtn.parentNode.replaceChild(newOk, okBtn);
+            cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
+
+            newOk.onclick = () => {
+                modal.classList.add('hidden');
+                if (callback) callback(true);
+            };
+
+            newCancel.onclick = () => {
+                modal.classList.add('hidden');
+                // if (callback) callback(false); // Optional
+            };
+
+            modal.classList.remove('hidden');
+        }
+
+
         // --- Auth Helper ---
         async function fetchAuth(url, options = {}) {
             const token = localStorage.getItem('wipay_token');
             if (!token) return window.location.href = 'login.html';
 
             const headers = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', ...options.headers };
-            const res = await fetch(url, { ...options, headers });
+
+            // Handle URL: if it starts with /api, replace with full URL
+            const fullUrl = url.startsWith('/api') ? url.replace('/api', CONFIG.API_BASE_URL) : url;
+
+            const res = await fetch(fullUrl, { ...options, headers });
 
             if (res.status === 401 || res.status === 403) {
                 localStorage.removeItem('wipay_token');
@@ -174,15 +288,24 @@
         }
 
         // --- Tenant Logic ---
+        let allTenants = []; // Store fetched tenants
+
         async function fetchTenants() {
             try {
                 const res = await fetchAuth('/api/super/tenants');
-                const tenants = await res.json();
-                const tbody = document.getElementById('tenantsTableBody');
-                tbody.innerHTML = '';
+                allTenants = await res.json();
+                renderTenantsTable();
+            } catch (e) {
+                console.error(e);
+            }
+        }
 
-                tenants.forEach(t => {
-                    tbody.innerHTML += `
+        function renderTenantsTable() {
+            const tbody = document.getElementById('tenantsTableBody');
+            tbody.innerHTML = '';
+
+            allTenants.forEach(t => {
+                tbody.innerHTML += `
                         <tr>
                             <td>${t.id}</td>
                             <td>${t.username}</td>
@@ -190,8 +313,8 @@
                             <td>
                                 <div>${t.billing_type || 'commission'}</div>
                                 ${t.billing_type === 'subscription'
-                            ? `<small style="color:${getExpiryColor(t.subscription_expiry)}">${formatExpiry(t.subscription_expiry)}</small>`
-                            : ''}
+                        ? `<small style="color:${getExpiryColor(t.subscription_expiry)}">${formatExpiry(t.subscription_expiry)}</small>`
+                        : ''}
                             </td>
                             <td>${new Date(t.created_at).toLocaleDateString()}</td>
                             <td>
@@ -200,10 +323,7 @@
                             </td>
                         </tr>
                     `;
-                });
-            } catch (e) {
-                console.error(e);
-            }
+            });
         }
 
         async function createTenant() {
@@ -211,7 +331,7 @@
             const password = document.getElementById('newTenantPass').value;
             const billing = document.getElementById('newTenantBilling').value;
 
-            if (!username || !password) return alert('Fill all fields');
+            if (!username || !password) return showAlert('Fill all fields', 'error');
 
             try {
                 const res = await fetchAuth('/api/super/tenants', {
@@ -220,27 +340,28 @@
                 });
 
                 if (res.ok) {
-                    alert('Tenant Created');
+                    showAlert('Tenant Created', 'success');
                     closeModal('addTenantModal');
                     fetchTenants();
                 } else {
                     const data = await res.json();
-                    alert(data.error || 'Failed');
+                    showAlert(data.error || 'Failed', 'error');
                 }
             } catch (e) { console.error(e); }
         }
 
         async function deleteTenant(id) {
-            if (!confirm('Are you sure you want to delete this tenant?')) return;
-
-            try {
-                const res = await fetchAuth(`/api/super/tenants/${id}`, { method: 'DELETE' });
-                if (res.ok) {
-                    fetchTenants();
-                } else {
-                    alert('Failed to delete');
-                }
-            } catch (e) { console.error(e); }
+            showConfirm('Are you sure you want to delete this tenant?', async () => {
+                try {
+                    const res = await fetchAuth(`/api/super/tenants/${id}`, { method: 'DELETE' });
+                    if (res.ok) {
+                        fetchTenants();
+                        showAlert('Tenant deleted successfully', 'success');
+                    } else {
+                        showAlert('Failed to delete', 'error');
+                    }
+                } catch (e) { console.error(e); }
+            });
         }
 
         async function fetchStats() {
@@ -282,7 +403,7 @@
 
         async function submitRenew() {
             const date = document.getElementById('renewDate').value;
-            if (!date) return alert('Select a date');
+            if (!date) return showAlert('Select a date', 'error');
 
             try {
                 const res = await fetchAuth(`/api/super/tenants/${currentRenewId}/subscription`, {
@@ -290,14 +411,86 @@
                     body: JSON.stringify({ expiry_date: date })
                 });
                 if (res.ok) {
-                    alert('Subscription Updated');
+                    showAlert('Subscription Updated', 'success');
                     closeModal('renewModal');
                     fetchTenants();
                 } else {
-                    alert('Failed to update');
+                    showAlert('Failed to update', 'error');
                 }
             } catch (e) { console.error(e); }
         }
+
+        // --- Password Reset Logic ---
+        function openGlobalResetModal() {
+            const select = document.getElementById('resetTenantSelect');
+            select.innerHTML = '<option value="">-- Select Tenant --</option>';
+
+            allTenants.forEach(t => {
+                select.innerHTML += `<option value="${t.id}">${t.username} (ID: ${t.id})</option>`;
+            });
+
+            document.getElementById('resetNewPass').value = '';
+            openModal('resetPasswordModal');
+        }
+
+        async function submitResetPassword() {
+            const tenantId = document.getElementById('resetTenantSelect').value;
+            const newPass = document.getElementById('resetNewPass').value;
+
+            if (!tenantId || !newPass) return showAlert('Please select a tenant and enter a new password.', 'error');
+
+            try {
+                const res = await fetchAuth(`/api/super/tenants/${tenantId}/password`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ new_password: newPass })
+                });
+
+                if (res.ok) {
+                    showAlert('Password successfully reset.', 'success');
+                    closeModal('resetPasswordModal');
+                } else {
+                    const data = await res.json();
+                    showAlert(data.error || 'Failed to reset password.', 'error');
+                }
+            } catch (e) {
+                console.error(e);
+                showAlert('Network error occurred.', 'error');
+            }
+        }
+
+        // --- Mobile Sidebar Logic ---
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            if (sidebar) sidebar.classList.toggle('open');
+        }
+
+        function initMobileMenus() {
+            const sidebar = document.querySelector('.sidebar');
+            const links = document.querySelectorAll('.sidebar-nav li a');
+            const hamburger = document.querySelector('.mobile-menu-btn');
+
+            // Close sidebar when clicking any link
+            links.forEach(l => {
+                l.addEventListener('click', () => {
+                    if (window.innerWidth <= 768) {
+                        sidebar.classList.remove('open');
+                    }
+                });
+            });
+
+            // Close sidebar when clicking outside
+            document.addEventListener('click', (e) => {
+                if (window.innerWidth <= 768 && sidebar.classList.contains('open')) {
+                    // If click is NOT inside sidebar AND NOT the hamburger button
+                    if (!sidebar.contains(e.target) && !hamburger.contains(e.target)) {
+                        sidebar.classList.remove('open');
+                    }
+                }
+            });
+        }
+
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', initMobileMenus);
 
     </script>
 </body>
