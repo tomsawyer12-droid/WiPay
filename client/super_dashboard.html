@@ -64,10 +64,9 @@
             <div id="tenantsView" class="view-section">
                 <div class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
                     <h2>Tenants (Admins)</h2>
-                    <div>
-                        <button class="btn-save" style="background-color: #ff9800; margin-right: 10px;"
-                            onclick="openGlobalResetModal()">Reset Password</button>
-                        <button class="btn-save" onclick="openModal('addTenantModal')">+ Add Tenant</button>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn-warning" onclick="openGlobalResetModal()">Reset Password</button>
+                        <button class="btn-success" onclick="openModal('addTenantModal')">+ Add Tenant</button>
                     </div>
                 </div>
                 <div class="table-responsive table-scroll-view">
@@ -123,6 +122,8 @@
             <h3>Add New Tenant</h3>
             <input type="text" id="newTenantUser" placeholder="Username"
                 style="width: 100%; padding: 10px; margin-bottom: 10px;">
+            <input type="email" id="newTenantEmail" placeholder="Email Address (Optional)"
+                style="width: 100%; padding: 10px; margin-bottom: 10px;">
             <input type="password" id="newTenantPass" placeholder="Password"
                 style="width: 100%; padding: 10px; margin-bottom: 10px;">
             <div style="margin-bottom: 15px;">
@@ -133,7 +134,7 @@
                 </select>
             </div>
             <div class="modal-actions">
-                <button onclick="createTenant()" class="btn-save">Create</button>
+                <button onclick="createTenant()" class="btn-success">Create Tenant</button>
                 <button onclick="closeModal('addTenantModal')" class="btn-cancel">Cancel</button>
             </div>
         </div>
@@ -146,7 +147,7 @@
             <p style="color:#aaa; font-size:0.9rem; margin-bottom:10px;">Set the new expiry date for this tenant.</p>
             <input type="date" id="renewDate" style="width: 100%; padding: 10px; margin-bottom: 20px;">
             <div class="modal-actions">
-                <button onclick="submitRenew()" class="btn-save">Save</button>
+                <button onclick="submitRenew()" class="btn-submit">Save Changes</button>
                 <button onclick="closeModal('renewModal')" class="btn-cancel">Cancel</button>
             </div>
         </div>
@@ -192,8 +193,7 @@
                 style="width: 100%; padding: 10px; margin-bottom: 20px;">
 
             <div class="modal-actions">
-                <button onclick="submitResetPassword()" class="btn-save" style="background-color: #ff9800;">Reset
-                    Password</button>
+                <button onclick="submitResetPassword()" class="btn-warning">Reset Password</button>
                 <button onclick="closeModal('resetPasswordModal')" class="btn-cancel">Cancel</button>
             </div>
         </div>
@@ -201,6 +201,17 @@
 
     <script src="js/config.js"></script>
     <script>
+        // --- Security / Utilities ---
+        function escapeHtml(text) {
+            if (!text) return text;
+            return text
+                .toString()
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
         // --- Custom Alert/Confirm Logic ---
         function showAlert(message, type = 'success') {
             const modal = document.getElementById('customAlertModal');
@@ -305,11 +316,20 @@
             tbody.innerHTML = '';
 
             allTenants.forEach(t => {
+                const isActive = t.last_active_at && (new Date() - new Date(t.last_active_at) < 5 * 60 * 1000); // 5 mins
+                const statusHtml = isActive
+                    ? `<span style="display:inline-block; width:10px; height:10px; background:#4caf50; border-radius:50%; margin-right:5px; margin-left:5px;" title="Online"></span>`
+                    : `<div style="font-size:0.75rem; color:#888; margin-top:2px;">Last seen: ${t.last_active_at ? new Date(t.last_active_at).toLocaleString() : 'Never'}</div>`;
+
                 tbody.innerHTML += `
                         <tr>
                             <td>${t.id}</td>
-                            <td>${t.username}</td>
-                            <td>${t.role}</td>
+                            <td>
+                                ${escapeHtml(t.username)}
+                                ${isActive ? statusHtml : ''}
+                                ${!isActive ? statusHtml : ''}
+                            </td>
+                            <td>${escapeHtml(t.role)}</td>
                             <td>
                                 <div>${t.billing_type || 'commission'}</div>
                                 ${t.billing_type === 'subscription'
@@ -318,8 +338,10 @@
                             </td>
                             <td>${new Date(t.created_at).toLocaleDateString()}</td>
                             <td>
-                                ${t.role !== 'super_admin' ? `<button class="btn-cancel" onclick="deleteTenant(${t.id})">Delete</button>` : '-'}
-                                ${t.billing_type === 'subscription' ? `<button class="btn-save" style="margin-left:5px; font-size:0.7rem;" onclick="openRenewModal(${t.id}, '${t.subscription_expiry || ''}')">Renew</button>` : ''}
+                                <div class="actions-cell">
+                                    ${t.role !== 'super_admin' ? `<button class="btn-cancel btn-sm" onclick="deleteTenant(${t.id})">Delete</button>` : '<div class="btn-sm"></div>'}
+                                    ${t.billing_type === 'subscription' ? `<button class="btn-submit btn-sm" onclick="openRenewModal(${t.id}, '${t.subscription_expiry || ''}')">Renew</button>` : '<div class="btn-sm"></div>'}
+                                </div>
                             </td>
                         </tr>
                     `;
@@ -330,13 +352,14 @@
             const username = document.getElementById('newTenantUser').value;
             const password = document.getElementById('newTenantPass').value;
             const billing = document.getElementById('newTenantBilling').value;
+            const email = document.getElementById('newTenantEmail').value;
 
             if (!username || !password) return showAlert('Fill all fields', 'error');
 
             try {
                 const res = await fetchAuth('/api/super/tenants', {
                     method: 'POST',
-                    body: JSON.stringify({ username, password, billing_type: billing })
+                    body: JSON.stringify({ username, password, billing_type: billing, email: email })
                 });
 
                 if (res.ok) {
@@ -436,8 +459,15 @@
         async function submitResetPassword() {
             const tenantId = document.getElementById('resetTenantSelect').value;
             const newPass = document.getElementById('resetNewPass').value;
+            const btn = document.querySelector('#resetPasswordModal .btn-warning'); // Select the button
 
             if (!tenantId || !newPass) return showAlert('Please select a tenant and enter a new password.', 'error');
+
+            // Immediate Feedback
+            const originalText = btn.textContent;
+            btn.textContent = 'Processing...';
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
 
             try {
                 const res = await fetchAuth(`/api/super/tenants/${tenantId}/password`, {
@@ -455,6 +485,11 @@
             } catch (e) {
                 console.error(e);
                 showAlert('Network error occurred.', 'error');
+            } finally {
+                // Restore Button State
+                btn.textContent = originalText;
+                btn.disabled = false;
+                btn.style.opacity = '1';
             }
         }
 

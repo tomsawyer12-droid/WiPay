@@ -11,7 +11,7 @@ router.use(verifySuperAdmin);
 // Get All Tenants (Admins)
 router.get('/tenants', async (req, res) => {
     try {
-        const [admins] = await db.query('SELECT id, username, role, billing_type, subscription_expiry, created_at FROM admins ORDER BY created_at DESC');
+        const [admins] = await db.query('SELECT id, username, role, billing_type, subscription_expiry, last_active_at, created_at FROM admins ORDER BY created_at DESC');
         res.json(admins);
     } catch (err) {
         console.error(err);
@@ -21,7 +21,7 @@ router.get('/tenants', async (req, res) => {
 
 // Create New Tenant
 router.post('/tenants', async (req, res) => {
-    const { username, password } = req.body;
+    const { username, password, email } = req.body;
 
     if (!username || !password) {
         return res.status(400).json({ error: 'Username and password are required' });
@@ -38,8 +38,9 @@ router.post('/tenants', async (req, res) => {
         const hash = await bcrypt.hash(password, salt);
 
         const billingType = req.body.billing_type || 'commission';
+        const userEmail = email || null;
 
-        await db.query('INSERT INTO admins (username, password_hash, role, billing_type) VALUES (?, ?, ?, ?)', [username, hash, 'admin', billingType]);
+        await db.query('INSERT INTO admins (username, password_hash, role, billing_type, email) VALUES (?, ?, ?, ?, ?)', [username, hash, 'admin', billingType, userEmail]);
 
         res.status(201).json({ message: 'Tenant created successfully' });
     } catch (err) {

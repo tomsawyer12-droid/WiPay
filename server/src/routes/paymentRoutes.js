@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../config/db');
 const sessionStore = require('../config/session');
 const { sendSMS } = require('../utils/sms');
+const { sendPaymentNotification, sendSMSPurchaseNotification, sendWithdrawalNotification } = require('../utils/email');
 const { authenticateToken } = require('../middleware/auth');
 require('dotenv').config();
 
@@ -10,6 +11,19 @@ const RELWORX_API_URL = 'https://payments.relworx.com/api/mobile-money/request-p
 const RELWORX_SEND_PAYMENT_URL = 'https://payments.relworx.com/api/mobile-money/send-payment';
 const RELWORX_API_KEY = process.env.RELWORX_API_KEY;
 const RELWORX_ACCOUNT_NO = process.env.RELWORX_ACCOUNT_NO;
+
+async function getAdminBalance(adminId) {
+    try {
+        const [transStats] = await db.query("SELECT COALESCE(SUM(amount - COALESCE(fee, 0)), 0) as total_revenue FROM transactions WHERE status = 'success' AND admin_id = ?", [adminId]);
+        const [withdrawStats] = await db.query("SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals WHERE admin_id = ?", [adminId]);
+        const bal = Number(transStats[0].total_revenue) - Number(withdrawStats[0].total_withdrawn);
+        console.log(`[BALANCE] Admin ${adminId}: Rev=${transStats[0].total_revenue}, Wd=${withdrawStats[0].total_withdrawn}, Bal=${bal}`);
+        return bal;
+    } catch (e) {
+        console.error('Error fetching balance:', e);
+        return 0;
+    }
+}
 
 function grantAccess(phoneNumber, durationHours) {
     console.log(`[GATEWAY] Granting access to ${phoneNumber} for ${durationHours} hours.`);
@@ -97,6 +111,21 @@ router.post('/webhook', async (req, res) => {
         if (status === 'success' || status === 'successful') {
             await db.query('UPDATE sms_fees SET status = "success" WHERE reference = ?', [reference]);
             console.log(`[WEBHOOK] SMS Topup Successful: ${reference}`);
+
+            // Email Notification
+            try {
+                // Find who made this payment? sms_fees usually has admin_id
+                const [smsRows] = await db.query('SELECT admin_id, amount, credits FROM sms_fees WHERE reference = ?', [reference]);
+                if (smsRows.length > 0) {
+                    const adminId = smsRows[0].admin_id;
+                    const balance = await getAdminBalance(adminId);
+                    const [adminRows] = await db.query('SELECT email, username FROM admins WHERE id = ?', [adminId]);
+                    if (adminRows.length > 0 && adminRows[0].email) {
+                        sendSMSPurchaseNotification(adminRows[0].email, smsRows[0].amount, smsRows[0].credits, reference, balance, adminRows[0].username);
+                    }
+                }
+            } catch (smsEmailErr) { console.error('SMS Email Error', smsEmailErr); }
+
         } else if (status === 'failed') {
             await db.query('UPDATE sms_fees SET status = "failed" WHERE reference = ?', [reference]);
             console.log(`[WEBHOOK] SMS Topup Failed: ${reference}`);
@@ -139,6 +168,14 @@ router.post('/webhook', async (req, res) => {
                     const msg = `Payment Received! Your voucher code: ${voucher.code}. Valid for ${packages[0].validity_hours} hrs.`;
                     sendSMS(tx.phone_number, msg, packages[0].admin_id);
                     console.log(`[WEBHOOK] Voucher sent for ${reference}`);
+
+                    // Email Notification
+                    try {
+                        const [adminRows] = await db.query('SELECT email FROM admins WHERE id = ?', [packages[0].admin_id]);
+                        if (adminRows.length > 0) {
+                            sendPaymentNotification(adminRows[0].email, tx.amount, tx.phone_number, reference, voucher.code);
+                        }
+                    } catch (emailErr) { console.error('Email Error:', emailErr); }
                 } else {
                     console.error(`[WEBHOOK] No vouchers available for ${reference}`);
                 }
@@ -229,6 +266,16 @@ router.post('/check-payment-status', async (req, res) => {
                     await db.query('UPDATE vouchers SET is_used = TRUE WHERE id = ?', [voucher.id]);
                     const msg = `Payment Received! Your voucher code: ${voucher.code}. Valid for ${packages[0].validity_hours} hrs.`;
                     sendSMS(tx.phone_number, msg, packages[0].admin_id);
+
+                    // Email Notification
+                    try {
+                        const adminId = packages[0].admin_id;
+                        const balance = await getAdminBalance(adminId);
+                        const [adminRows] = await db.query('SELECT email, username FROM admins WHERE id = ?', [adminId]);
+                        if (adminRows.length > 0) {
+                            sendPaymentNotification(adminRows[0].email, tx.amount, tx.phone_number, transaction_ref, voucher.code, balance, adminRows[0].username);
+                        }
+                    } catch (emailErr) { console.error('Email Error:', emailErr); }
                 }
             }
             return res.json({ status: 'SUCCESS' });
@@ -250,6 +297,10 @@ router.post('/admin/withdraw', authenticateToken, async (req, res) => {
 
     if (!amount || !phone_number) return res.status(400).json({ error: 'Required fields missing' });
 
+    let formattedPhone = phone_number.trim();
+    if (formattedPhone.startsWith('0')) formattedPhone = '+256' + formattedPhone.slice(1);
+    else if (!formattedPhone.startsWith('+')) formattedPhone = '+' + formattedPhone;
+
     try {
         const [transStats] = await db.query("SELECT COALESCE(SUM(amount - fee), 0) as total_revenue FROM transactions WHERE status = 'success' AND admin_id = ?", [req.user.id]);
         const [withdrawStats] = await db.query("SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals WHERE admin_id = ?", [req.user.id]);
@@ -264,7 +315,7 @@ router.post('/admin/withdraw', authenticateToken, async (req, res) => {
         const payload = {
             account_no: RELWORX_ACCOUNT_NO,
             reference: reference,
-            msisdn: phone_number,
+            msisdn: formattedPhone,
             currency: 'UGX',
             amount: Number(amount),
             description: description || 'Admin Withdrawal'
@@ -285,8 +336,20 @@ router.post('/admin/withdraw', authenticateToken, async (req, res) => {
         if (response.ok && (result.success === true || result.status === 'success')) {
             await db.query(
                 'INSERT INTO withdrawals (phone_number, amount, reference, description, admin_id) VALUES (?, ?, ?, ?, ?)',
-                [phone_number, amount, reference, description, req.user.id]
+                [formattedPhone, amount, reference, description, req.user.id]
             );
+
+            // Email Notification
+            try {
+                // Determine balance AFTER this withdrawal? Or before? Usually user wants to see remaining.
+                // The DB queries above updated the withdrawals table, so getBalance SHOULD reflect the deduction.
+                const balance = await getAdminBalance(req.user.id);
+                const [adminRows] = await db.query('SELECT email, username FROM admins WHERE id = ?', [req.user.id]);
+                if (adminRows.length > 0 && adminRows[0].email) {
+                    sendWithdrawalNotification(adminRows[0].email, amount, formattedPhone, reference, description || 'Admin Withdrawal', balance, adminRows[0].username);
+                }
+            } catch (wdEmailErr) { console.error('Withdraw Email Error', wdEmailErr); }
+
             res.json({ success: true, data: result });
         } else {
             console.warn('[Withdraw] Failed:', result);

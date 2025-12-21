@@ -263,11 +263,12 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 2000;
+    z-index: 3000;
+    /* Higher than sidebar (usually 1000) but lower than alerts (9999) */
 }
 
 .dashboard-modal.hidden {
-    display: none;
+    display: none !important;
 }
 
 .dashboard-modal-content {
@@ -338,6 +339,11 @@ body {
 }
 
 /* Premium Buttons */
+button:active {
+    transform: scale(0.98);
+    /* Immediate visual feedback */
+}
+
 .btn-submit {
     background: linear-gradient(135deg, #29b6f6, #039be5);
     color: white;
@@ -372,6 +378,58 @@ body {
     background: rgba(255, 255, 255, 0.05);
 }
 
+.btn-success {
+    background: linear-gradient(135deg, #66bb6a, #43a047);
+    color: white;
+    border: none;
+    padding: 10px 24px;
+    border-radius: 50px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(76, 175, 80, 0.3);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-success:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(76, 175, 80, 0.4);
+}
+
+.btn-save {
+    background: linear-gradient(135deg, #66bb6a, #43a047);
+    color: white;
+    border: none;
+    padding: 10px 24px;
+    border-radius: 50px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(76, 175, 80, 0.3);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-save:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(76, 175, 80, 0.4);
+}
+
+
+.btn-warning {
+    background: linear-gradient(135deg, #ff9800, #f57c00);
+    color: white;
+    border: none;
+    padding: 10px 24px;
+    border-radius: 50px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(255, 152, 0, 0.3);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-warning:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(255, 152, 0, 0.4);
+}
+
 /* --- Data Tables --- */
 .data-table {
     width: 100%;
@@ -380,6 +438,27 @@ body {
     border-radius: 8px;
     overflow: hidden;
     margin-top: 20px;
+}
+
+.actions-cell {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    /* Wraps on very small screens */
+}
+
+/* Base style for small table buttons */
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    min-width: 70px;
+    /* Equal width */
+    text-align: center;
+    border-radius: 4px;
+    /* Slightly squarer for table */
+    flex: 1;
+    /* Grow to fill space if needed, or maintain equality */
 }
 
 .data-table th,
@@ -561,12 +640,14 @@ body {
         width: 90%;
         max-width: 350px;
         padding: 20px;
-        transition: margin-top 0.3s ease;
-        /* Smooth transition */
+        /* transition removed to prevent visual glitches */
     }
 
     /* Shift Modal Up when typing (Keyboard open) */
-    .dashboard-modal:focus-within {
+    /* Shift Modal Up when typing (Keyboard open) - Only for inputs */
+    .dashboard-modal:has(input:focus),
+    .dashboard-modal:has(select:focus),
+    .dashboard-modal:has(textarea:focus) {
         align-items: flex-start;
         padding-top: 50px;
         /* Push near top */

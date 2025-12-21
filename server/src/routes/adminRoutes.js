@@ -6,6 +6,7 @@ const { sendSMS } = require('../utils/sms');
 const multer = require('multer');
 const csv = require('csv-parser');
 const fs = require('fs');
+const path = require('path');
 
 // Configure Multer for temp uploads
 const upload = multer({ dest: 'uploads/' });
@@ -36,11 +37,53 @@ router.get('/admin/categories', async (req, res) => {
     }
 });
 
+router.delete('/admin/categories/:id', async (req, res) => {
+    const categoryId = req.params.id;
+    const connection = await db.getConnection();
+
+    try {
+        await connection.beginTransaction();
+
+        // 1. Verify Category Ownership
+        const [cat] = await connection.query('SELECT id FROM categories WHERE id = ? AND admin_id = ?', [categoryId, req.user.id]);
+        if (cat.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ error: 'Category not found' });
+        }
+
+        // 2. Get Package IDs linked to this category
+        const [packages] = await connection.query('SELECT id FROM packages WHERE category_id = ?', [categoryId]);
+        const packageIds = packages.map(p => p.id);
+
+        if (packageIds.length > 0) {
+            // 3. Delete Vouchers linked to these packages
+            const placeholders = packageIds.map(() => '?').join(',');
+            await connection.query(`DELETE FROM vouchers WHERE package_id IN (${placeholders})`, packageIds);
+
+            // 4. Delete Packages
+            await connection.query('DELETE FROM packages WHERE category_id = ?', [categoryId]);
+        }
+
+        // 5. Delete Category
+        await connection.query('DELETE FROM categories WHERE id = ?', [categoryId]);
+
+        await connection.commit();
+        res.json({ message: 'Category and all related data deleted successfully' });
+
+    } catch (err) {
+        await connection.rollback();
+        console.error('Delete Category Error:', err);
+        res.status(500).json({ error: 'Failed to delete category' });
+    } finally {
+        connection.release();
+    }
+});
+
 // --- Packages ---
 router.post('/admin/packages', async (req, res) => {
     const { name, price, validity_hours, category_id, data_limit_mb } = req.body;
 
-    if (!name || !price || !validity_hours || !category_id) {
+    if (!name || !price || !category_id) {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -48,7 +91,7 @@ router.post('/admin/packages', async (req, res) => {
         await db.query(`
             INSERT INTO packages (category_id, name, price, validity_hours, data_limit_mb, created_at, admin_id)
             VALUES (?, ?, ?, ?, ?, NOW(), ?)
-        `, [category_id, name, price, validity_hours, data_limit_mb || 0, req.user.id]);
+        `, [category_id, name, price, validity_hours || 0, data_limit_mb || 0, req.user.id]);
         res.json({ message: 'Package created successfully' });
     } catch (err) {
         console.error('Create Package Error:', err);
@@ -176,7 +219,6 @@ router.get('/admin/vouchers', async (req, res) => {
 });
 
 
-// --- SMS & Finance ---
 const RELWORX_API_URL = 'https://payments.relworx.com/api/mobile-money/request-payment';
 const RELWORX_API_KEY = process.env.RELWORX_API_KEY;
 const RELWORX_ACCOUNT_NO = process.env.RELWORX_ACCOUNT_NO;
@@ -190,11 +232,13 @@ router.get('/admin/sms-balance', async (req, res) => {
         const [rows] = await db.query(`
             SELECT SUM(amount) as balance 
             FROM sms_fees 
-            WHERE admin_id = ? AND (status = 'success' OR status IS NULL)
+            WHERE admin_id = ? 
+            AND (status = 'success' OR status IS NULL)
+            AND type != 'subscription'
         `, [req.user.id]);
 
         const balance = rows[0].balance || 0;
-        res.json({ balance: Number(balance) });
+        res.json({ balance: Math.max(0, Number(balance)) });
     } catch (err) {
         console.error('Fetch SMS Balance Error:', err);
         res.status(500).json({ error: 'Failed to fetch balance' });
@@ -214,7 +258,6 @@ router.post('/admin/buy-sms', async (req, res) => {
 
         const reference = `SMS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-        // Helper log
         console.log(`[SMS-TOPUP] Initiating for ${formattedPhone}, Amount: ${amount}, Ref: ${reference}`);
 
         // 1. Insert Pending Record
@@ -240,6 +283,7 @@ router.post('/admin/buy-sms', async (req, res) => {
         });
 
         const paymentData = await response.json();
+        console.log(`[SMS-TOPUP] Init Response (${response.status}):`, JSON.stringify(paymentData));
 
         if (response.ok) {
             res.json({
@@ -248,9 +292,10 @@ router.post('/admin/buy-sms', async (req, res) => {
                 reference: reference
             });
         } else {
-            console.error('[SMS-TOPUP] Gateway Failed:', paymentData);
+            console.error(`[SMS-TOPUP] Gateway Failed:`, paymentData);
             await db.query('UPDATE sms_fees SET status = "failed" WHERE reference = ?', [reference]);
-            res.status(400).json({ error: 'Payment gateway failed', details: paymentData });
+            const errorMsg = paymentData.message || 'Unknown error';
+            res.status(400).json({ error: `Payment gateway failed: ${errorMsg}`, details: paymentData });
         }
     } catch (err) {
         console.error('Buy SMS Error:', err);
@@ -260,10 +305,52 @@ router.post('/admin/buy-sms', async (req, res) => {
 
 router.get('/admin/sms-status/:reference', async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT status FROM sms_fees WHERE reference = ? AND admin_id = ?', [req.params.reference, req.user.id]);
+        const [rows] = await db.query('SELECT status, amount FROM sms_fees WHERE reference = ? AND admin_id = ?', [req.params.reference, req.user.id]);
         if (rows.length === 0) return res.status(404).json({ error: 'Transaction not found' });
 
-        res.json({ status: rows[0].status });
+        const localStatus = rows[0].status;
+
+        // If success or failed, return immediately
+        if (localStatus === 'success' || localStatus === 'failed') {
+            return res.json({ status: localStatus });
+        }
+
+        // --- Active Backup Poll (For Localhost/Backup) ---
+        const checkUrl = `https://payments.relworx.com/api/mobile-money/check-request-status?account_no=${RELWORX_ACCOUNT_NO}&reference=${req.params.reference}&internal_reference=${req.params.reference}`;
+
+        try {
+            const gwRes = await fetch(checkUrl, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/vnd.relworx.v2',
+                    'Authorization': `Bearer ${RELWORX_API_KEY}`
+                }
+            });
+
+            if (!gwRes.ok) return res.json({ status: 'pending' }); // Keep waiting
+
+            const gwData = await gwRes.json();
+            const gwStatus = (gwData.status || '').toUpperCase();
+            const itemStatus = (gwData.item_status || '').toUpperCase();
+
+            // Check Success
+            if (gwStatus === 'SUCCESS' || itemStatus === 'SUCCESS') {
+                await db.query('UPDATE sms_fees SET status = "success" WHERE reference = ?', [req.params.reference]);
+                return res.json({ status: 'success' });
+            }
+            // Check Failure
+            else if (gwStatus === 'FAILED' || itemStatus === 'FAILED') {
+                await db.query('UPDATE sms_fees SET status = "failed" WHERE reference = ?', [req.params.reference]);
+                return res.json({ status: 'failed' });
+            }
+
+            return res.json({ status: 'pending' });
+
+        } catch (fetchErr) {
+            console.error('[SMS-POLL] Fetch Error:', fetchErr);
+            return res.json({ status: 'pending' });
+        }
+
     } catch (err) {
         console.error('Check SMS Status Error:', err);
         res.status(500).json({ error: 'Server error' });
@@ -391,34 +478,36 @@ router.get('/admin/stats', async (req, res) => {
 
         const [withdrawStats] = await db.query('SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals WHERE admin_id = ?', [req.user.id]);
 
+        const adminId = req.user.id;
         const totalRevenue = Number(transStats[0].total_revenue);
         const totalWithdrawn = Number(withdrawStats[0].total_withdrawn);
         const netBalance = totalRevenue - totalWithdrawn;
 
-        const [counts] = await db.query(`
-            SELECT 
-                (SELECT COUNT(*) FROM categories WHERE admin_id = ?) as categories_count,
-                (SELECT COUNT(*) FROM packages WHERE admin_id = ?) as packages_count,
-                (SELECT COUNT(*) FROM vouchers WHERE is_used = 0 AND admin_id = ?) as vouchers_count,
-                (SELECT COUNT(*) FROM vouchers WHERE is_used = 1 AND admin_id = ?) as bought_vouchers_count,
-                (SELECT COUNT(*) FROM transactions WHERE admin_id = ?) as transactions_count
-        `, [req.user.id, req.user.id, req.user.id, req.user.id, req.user.id]);
+        // 2. Counts
+        const [catCount] = await db.query('SELECT count(*) as count FROM categories WHERE admin_id = ?', [adminId]);
+        const [pkgCount] = await db.query('SELECT count(*) as count FROM packages WHERE admin_id = ?', [adminId]);
+        const [voucherCount] = await db.query('SELECT count(*) as count FROM vouchers WHERE admin_id = ? AND is_used = 0', [adminId]);
+        const [boughtCount] = await db.query('SELECT count(*) as count FROM vouchers WHERE admin_id = ? AND is_used = 1', [adminId]);
+        const [paymentCount] = await db.query('SELECT count(*) as count FROM transactions WHERE admin_id = ? AND status = "success"', [adminId]);
 
-        const [graphData] = await db.query(`
-            SELECT DATE_FORMAT(created_at, '%a') as day_name, SUM(amount) as total
-            FROM transactions 
-            WHERE status = 'success' AND payment_method != 'manual' AND created_at >= DATE(NOW()) - INTERVAL 7 DAY AND admin_id = ?
-            GROUP BY day_name
-            ORDER BY created_at
-        `, [req.user.id]);
-
-        const [adminInfo] = await db.query('SELECT billing_type, subscription_expiry FROM admins WHERE id = ?', [req.user.id]);
+        // 3. Subscription Status
+        const [adminInfo] = await db.query('SELECT subscription_expiry FROM admins WHERE id = ?', [adminId]);
 
         res.json({
-            finance: { ...transStats[0], total_revenue: netBalance },
-            counts: counts[0],
-            graph: graphData,
-            subscription: adminInfo[0] // Return subscription info
+            finance: {
+                ...transStats[0],
+                total_revenue: netBalance
+            },
+            counts: {
+                categories_count: catCount[0].count,
+                packages_count: pkgCount[0].count,
+                vouchers_count: voucherCount[0].count,
+                bought_vouchers_count: boughtCount[0].count,
+                payments_count: paymentCount[0].count
+            },
+            subscription: {
+                expiry: adminInfo[0].subscription_expiry
+            }
         });
     } catch (err) {
         console.error('Stats Error:', err);
@@ -436,29 +525,134 @@ router.get('/admin/sms-logs', async (req, res) => {
     }
 });
 
-// Admin SMS Balance (Inferred from logs)
-router.get('/admin/sms-balance', async (req, res) => {
-    try {
-        // Fetch the latest successful SMS log to find the remaining balance
-        const [logs] = await db.query('SELECT response FROM sms_logs WHERE status = "success" AND admin_id = ? ORDER BY created_at DESC LIMIT 1', [req.user.id]);
 
-        if (logs.length > 0) {
-            try {
-                const data = JSON.parse(logs[0].response);
-                // Relworx response structure: { success: true, data: { remaining_balance: 405, ... } }
-                // or { remaining_balance: ... } depending on version. 
-                // Based on logs seen: data.data.remaining_balance
-                const balance = data.data?.remaining_balance ?? 0;
-                return res.json({ balance });
-            } catch (parseErr) {
-                console.warn('Failed to parse SMS log response:', parseErr);
-            }
+// --- Subscription Renewal ---
+router.post('/admin/renew-subscription', async (req, res) => {
+    const { phone_number, months } = req.body;
+
+    if (!phone_number) return res.status(400).json({ error: 'Phone number is required' });
+    if (!months || months < 1) return res.status(400).json({ error: 'Invalid duration' });
+
+    // Enforce Pricing Server-Side
+    const MONTHLY_FEE = 20000;
+    const amount = months * MONTHLY_FEE;
+
+    try {
+        // Format Phone
+        let formattedPhone = phone_number.trim();
+        if (formattedPhone.startsWith('0')) formattedPhone = '+256' + formattedPhone.slice(1);
+        else if (!formattedPhone.startsWith('+')) formattedPhone = '+' + formattedPhone;
+
+        const reference = `SUB-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+        console.log(`[SUBSCRIPTION] Initiating for ${formattedPhone}, Months: ${months}, Amount: ${amount}, Ref: ${reference}`);
+
+        // 1. Insert Pending Record in NEW table
+        await db.query(`
+            INSERT INTO admin_subscriptions 
+            (admin_id, amount, months, phone_number, status, reference) 
+            VALUES (?, ?, ?, ?, 'pending', ?)
+        `, [req.user.id, amount, months, formattedPhone, reference]);
+
+        // 2. Call Relworx
+        const response = await fetch(RELWORX_API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/vnd.relworx.v2',
+                'Authorization': `Bearer ${RELWORX_API_KEY}`
+            },
+            body: JSON.stringify({
+                account_no: RELWORX_ACCOUNT_NO,
+                reference: reference,
+                msisdn: formattedPhone,
+                currency: 'UGX',
+                amount: Number(amount),
+                description: `Subscription Renewal (${months} months)`
+            })
+        });
+
+        const paymentData = await response.json();
+        console.log(`[SUBSCRIPTION] Gateway Response:`, JSON.stringify(paymentData));
+
+        if (response.ok) {
+            res.json({
+                message: 'Payment request initiated.',
+                status: 'pending',
+                reference: reference
+            });
+        } else {
+            console.error(`[SUBSCRIPTION] Gateway Failed:`, paymentData);
+            await db.query('UPDATE admin_subscriptions SET status = "failed" WHERE reference = ?', [reference]);
+            res.status(400).json({ error: 'Payment gateway failed', details: paymentData });
+        }
+    } catch (err) {
+        console.error('Subscription Error:', err);
+        res.status(500).json({ error: 'Failed to process subscription' });
+    }
+});
+
+router.get('/admin/subscription-status/:reference', async (req, res) => {
+    try {
+        const [rows] = await db.query('SELECT status, months FROM admin_subscriptions WHERE reference = ? AND admin_id = ?', [req.params.reference, req.user.id]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Transaction not found' });
+
+        const localStatus = rows[0].status;
+        const monthsToAdd = rows[0].months;
+
+        if (localStatus === 'success' || localStatus === 'failed') {
+            return res.json({ status: localStatus });
         }
 
-        res.json({ balance: 0 });
+        // Poll Gateway
+        const checkUrl = `https://payments.relworx.com/api/mobile-money/check-request-status?account_no=${RELWORX_ACCOUNT_NO}&reference=${req.params.reference}&internal_reference=${req.params.reference}`;
+
+        console.log(`[SUBSCRIPTION-POLL] Checking: ${req.params.reference}`);
+
+        const gwRes = await fetch(checkUrl, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/vnd.relworx.v2',
+                'Authorization': `Bearer ${RELWORX_API_KEY}`
+            }
+        });
+
+        if (!gwRes.ok) return res.json({ status: 'pending' });
+
+        const gwData = await gwRes.json();
+        const gwStatus = (gwData.status || '').toUpperCase();
+        const itemStatus = (gwData.item_status || '').toUpperCase();
+
+        if (gwStatus === 'SUCCESS' || itemStatus === 'SUCCESS') {
+            console.log(`[SUBSCRIPTION] Confirmed Success: ${req.params.reference}`);
+
+            // Update Transaction Status
+            await db.query('UPDATE admin_subscriptions SET status = "success" WHERE reference = ?', [req.params.reference]);
+
+            // Update Admin Expiry
+            // We need to fetch current expiry first to add time correctly
+            const [adminRows] = await db.query('SELECT subscription_expiry FROM admins WHERE id = ?', [req.user.id]);
+            let currentExpiry = new Date(adminRows[0].subscription_expiry);
+            const now = new Date();
+
+            // If expired, start from NOW. If active, add to current expiry.
+            if (currentExpiry < now) currentExpiry = now;
+
+            currentExpiry.setMonth(currentExpiry.getMonth() + monthsToAdd);
+
+            await db.query('UPDATE admins SET subscription_expiry = ? WHERE id = ?', [currentExpiry, req.user.id]);
+
+            return res.json({ status: 'success' });
+        } else if (gwStatus === 'FAILED') {
+            await db.query('UPDATE admin_subscriptions SET status = "failed" WHERE reference = ?', [req.params.reference]);
+            return res.json({ status: 'failed' });
+        }
+
+        res.json({ status: 'pending' });
+
     } catch (err) {
-        console.error('SMS Balance Error:', err);
-        res.status(500).json({ error: 'Failed to fetch balance' });
+        console.error('Check Subscription Status Error:', err);
+        res.status(500).json({ error: 'Failed to check status' });
     }
 });
 

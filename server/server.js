@@ -2,40 +2,56 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const path = require('path');
+const rateLimit = require('express-rate-limit');
 require('dotenv').config();
-const { limiter, authLimiter } = require('./src/middleware/rateLimiter');
 
 const app = express();
 const PORT = 5002;
 
-// Middleware
-app.use(cors()); // Allow all origins for now
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, '../client'))); // Serve frontend files
+app.set('trust proxy', 1); // Trust first proxy (ngrok) for rate limiting
 
-// Routes
+// --- Security Middleware ---
+
+// 1. Rate Limiting
+const globalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 3000, // Increased from 100 to 3000 to allow auto-refresh (Every 10s = ~270 reqs/15m per user)
+    message: 'Too many requests from this IP, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+const authLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 10, // Limit each IP to 10 login attempts per hour
+    message: 'Too many login attempts, please try again later.',
+});
+
+// 2. CORS Policy
+// 2. CORS Policy
+app.use(cors()); // Allow all origins (essential for ngrok dynamic URLs)
+
+// --- Middleware ---
+app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, '../client')));
+
+// --- Routes ---
 const authRoutes = require('./src/routes/authRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 const paymentRoutes = require('./src/routes/paymentRoutes');
 const publicRoutes = require('./src/routes/publicRoutes');
 const superAdminRoutes = require('./src/routes/superAdminRoutes');
 
-app.use('/api', limiter); // Apply general limits to all API routes
-app.use('/api/auth', authLimiter); // Apply strict limits to auth routes (if you have a specific auth path suffix)
-// Note: Since routes are mounted on /api, we should apply specific middleware carefully or in the route files.
-// However, the user asked for protections. Let's apply authLimiter carefully.
-// Actually, looking at routes, authRoutes is mounted on /api. 
-// authRoutes has /login. So path is /api/login.
-// We can apply authLimiter specifically to the login route or generally to authRoutes if they were separated.
-// But wait, authRoutes is mounted at /api. 
-// Let's refine the approach: apply limiter globally to /api, and authLimiter to specific paths.
+// Apply Limiters
+app.use('/api', globalLimiter);
+app.use('/api/auth/login', authLimiter);
 
-app.use('/api/login', authLimiter); // Protect login specifically
-app.use('/api', authRoutes);
-app.use('/api', publicRoutes); // Packages, Connect
-app.use('/api', paymentRoutes); // Payments - moved up to avoid admin middleware capture
-app.use('/api/super', superAdminRoutes); // Super Admin Routes
-app.use('/api', adminRoutes);  // Protected Admin Routes
+// Mount Routes
+app.use('/api', authRoutes); // Includes /auth/login
+app.use('/api', publicRoutes);
+app.use('/api', paymentRoutes);
+app.use('/api/super', superAdminRoutes);
+app.use('/api', adminRoutes);
 
 // Start Server
 app.listen(PORT, '0.0.0.0', () => {

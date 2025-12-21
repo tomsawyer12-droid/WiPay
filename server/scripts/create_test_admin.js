@@ -1,43 +1,36 @@
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
-require('dotenv').config(); // Loads .env from current directory (server/)
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
+const dbConfig = {
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'wipay_db'
+};
 
 async function createTestAdmin() {
-    const dbConfig = {
-        host: process.env.DB_HOST || 'localhost',
-        user: process.env.DB_USER || 'root',
-        password: process.env.DB_PASSWORD,
-        database: process.env.DB_NAME || 'wipay'
-    };
-
+    let connection;
     try {
-        const connection = await mysql.createConnection(dbConfig);
-        console.log('Connected to database.');
+        connection = await mysql.createConnection(dbConfig);
+        const password = await bcrypt.hash('password123', 10);
 
-        const username = 'testadmin';
-        const password = 'password123';
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        // Check if exists
-        const [rows] = await connection.execute('SELECT * FROM admins WHERE username = ?', [username]);
+        // Insert or Update
+        const [rows] = await connection.query('SELECT * FROM admins WHERE username = ?', ['testadmin']);
         if (rows.length > 0) {
-            console.log('Test admin already exists. Updating password...');
-            await connection.execute('UPDATE admins SET password_hash = ? WHERE username = ?', [hashedPassword, username]);
+            console.log('Updating testadmin password...');
+            await connection.query('UPDATE admins SET password_hash = ? WHERE id = ?', [password, rows[0].id]);
         } else {
-            console.log('Creating new test admin...');
-            await connection.execute(
-                'INSERT INTO admins (username, password_hash, role, billing_type) VALUES (?, ?, ?, ?)',
-                [username, hashedPassword, 'admin', 'commission']
-            );
+            console.log('Creating testadmin...');
+            await connection.query('INSERT INTO admins (username, password_hash, email, subscription_expiry) VALUES (?, ?, ?, ?)',
+                ['testadmin', password, 'test@example.com', '2023-01-01 00:00:00']);
         }
-
-        console.log('Success! Login with:');
-        console.log(`Username: ${username}`);
-        console.log(`Password: ${password}`);
-
-        await connection.end();
+        console.log('✅ Test Admin Ready: testadmin / password123');
     } catch (err) {
         console.error('Error:', err);
+    } finally {
+        if (connection) await connection.end();
     }
 }
 
