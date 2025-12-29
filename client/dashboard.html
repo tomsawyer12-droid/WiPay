@@ -5,7 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>WIPAY - Admin Dashboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/dashboard.css">
     <script>
         if (!localStorage.getItem('wipay_token')) {
@@ -45,17 +50,18 @@
 
                 <div class="nav-section">COMMS</div>
                 <ul>
-                    <li><a href="#" onclick="showAlert('Ads feature coming soon'); return false;">Ads <span
+                    <li><a href="#" onclick="showAlert('Ads feature coming soon', 'info'); return false;">Ads <span
                                 class="add-btn">+ Add</span></a></li>
                     <li data-view="sms"><a href="#" onclick="switchView('sms'); return false;">SMS</a></li>
                 </ul>
 
                 <div class="nav-section">SYSTEM</div>
                 <ul>
-                    <li><a href="#" onclick="showAlert('Locations feature coming soon'); return false;">Locations</a>
+                    <li><a href="#"
+                            onclick="showAlert('Locations feature coming soon', 'info'); return false;">Locations</a>
                     </li>
                     <li><a href="#" onclick="openDashModal('subscriptionModal'); return false;">Subscription</a></li>
-                    <li><a href="#" onclick="showAlert('Web Configs feature coming soon'); return false;">Web
+                    <li><a href="#" onclick="showAlert('Web Configs feature coming soon', 'info'); return false;">Web
                             Configs</a></li>
                 </ul>
             </nav>
@@ -83,37 +89,57 @@
 
             <!-- New Main Header -->
             <header class="main-header">
-                <div class="header-left" onclick="switchView('dashboard')" style="cursor: pointer;"
-                    title="Go to Dashboard">
-                    <!-- Mobile Hamburger -->
+                <!-- 1. Left: Hamburger -->
+                <div class="header-left">
                     <div class="mobile-menu-btn hidden-desktop" onclick="toggleSidebar(); event.stopPropagation();">
                         ☰
                     </div>
-                    <!-- Desktop Hamburger -->
                     <div class="desktop-menu-btn hidden-mobile"
-                        onclick="toggleDesktopSidebar(); event.stopPropagation();"
-                        style="font-size: 1.5rem; margin-right: 15px; cursor: pointer; color: white;">
+                        onclick="toggleDesktopSidebar(); event.stopPropagation();" title="Toggle Sidebar">
                         ☰
                     </div>
+                </div>
+
+                <!-- 2. Center: Logo -->
+                <div class="header-mid" onclick="switchView('dashboard')" style="cursor: pointer;"
+                    title="Go to Dashboard">
                     <img src="img/favicon.png" alt="WiPay Logo" class="header-logo">
-                    <span class="brand-name">WiPay</span>
+                    <span class="brand-name"><span class="text-red">Wi</span><span class="text-blue">Pay</span></span>
                 </div>
 
-                <div class="header-center">
+                <!-- 3. Right: Button + Avatar -->
+                <div class="header-right-container">
                     <button class="btn-sell-voucher"
-                        onclick="loadPackagesForSell(); openDashModal('sellVoucherModal')">Sell Voucher</button>
-                </div>
-
-
-
-                <div class="header-right">
-                    <span id="welcomeMsg" style="text-transform: uppercase;">WELCOME, ADMIN</span>
-                    <a href="/" target="_blank">VIEW SITE</a> /
-                    <a href="#" onclick="openDashModal('changePassModal')">CHANGE PASSWORD</a> /
-                    <a href="#" id="logoutLink">LOG OUT</a>
-                    <span class="theme-toggle">◐</span>
+                        onclick="loadPackagesForSell(); openDashModal('sellVoucherModal')">Sell
+                        Voucher</button>
+                    <!-- Avatar Dropdown -->
+                    <div class="user-menu-container" style="position: relative;">
+                        <div class="user-avatar" onclick="toggleUserMenu(event)">
+                            <i class="fas fa-user-circle"></i>
+                        </div>
+                        <div id="userDropdown" class="user-dropdown hidden">
+                            <div class="dropdown-header">
+                                <span id="welcomeMsg">WELCOME, ADMIN</span>
+                            </div>
+                            <div class="dropdown-divider"></div>
+                            <a href="/" target="_blank"><i class="fas fa-external-link-alt"></i> View Site</a>
+                            <a href="#" onclick="openDashModal('changePassModal')"><i class="fas fa-key"></i> Change
+                                Password</a>
+                            <div class="dropdown-item theme-row" onclick="toggleTheme()" style="cursor: pointer;">
+                                <span>Dark Mode</span>
+                                <span class="theme-toggle" id="themeIcon">◐</span>
+                            </div>
+                            <div class="dropdown-divider"></div>
+                            <a href="#" id="logoutLink" class="text-danger"><i class="fas fa-sign-out-alt"></i> Log
+                                Out</a>
+                        </div>
+                    </div>
                 </div>
             </header>
+
+
+
+
 
             <!-- Sub Header (Breadcrumbs) -->
             <div class="sub-header">
@@ -135,10 +161,13 @@
                 </div>
 
                 <!-- Stats Grid -->
-                <div class="stats-grid">
+                <div class="stats-grid" id="statsGrid">
                     <!-- Row 1 -->
                     <div class="stat-card cyan">
-                        <div class="stat-value" id="sms-balance">Loading...</div>
+                        <div class="stat-value" id="sms-balance">
+                            <div class="spinner" style="width: 24px; height: 24px; border-width: 3px; margin: 0 auto;">
+                            </div>
+                        </div>
                         <div class="stat-label">SMS Balance</div>
                         <div class="card-footer" onclick="openDashModal('buySMSModal')" style="cursor: pointer;">Buy SMS
                             <span class="arrow">→</span>
@@ -220,6 +249,14 @@
                         <div class="stat-label">Payments</div>
                         <div class="card-footer">More info <span class="arrow">→</span></div>
                     </div>
+                </div> <!-- End of statsGrid -->
+                <!-- View More (Mobile) -->
+                <div id="viewMoreContainer" class="view-more-container"
+                    style="display: none; text-align: center; margin-top: 16px;">
+                    <button class="btn-text" onclick="toggleStats()"
+                        style="background:none; border:none; color:var(--primary-color); font-weight:600; cursor:pointer;">
+                        View More <span class="arrow">↓</span>
+                    </button>
                 </div>
             </div>
 
@@ -256,7 +293,6 @@
                             <tr>
                                 <th>Name</th>
                                 <th>Price (UGX)</th>
-                                <th>Duration (Hrs)</th>
                                 <th>Category</th>
                             </tr>
                         </thead>
@@ -355,7 +391,7 @@
             <h3>Add Category</h3>
             <input type="text" id="newCatName" placeholder="Category Name (e.g., Daily Bundles)">
             <div class="modal-actions">
-                <button onclick="createCategory()" class="btn-save">Save</button>
+                <button onclick="createCategory()" class="btn-submit">Save</button>
                 <button onclick="closeDashModal('addCategoryModal')" class="btn-cancel">Cancel</button>
             </div>
         </div>
@@ -374,7 +410,7 @@
                 <option value="">Select Category</option>
             </select>
             <div class="modal-actions">
-                <button onclick="createPackage()" class="btn-save">Save</button>
+                <button onclick="createPackage()" class="btn-submit">Save</button>
                 <button onclick="closeDashModal('addPackageModal')" class="btn-cancel">Cancel</button>
             </div>
         </div>
@@ -393,7 +429,7 @@
             <input type="file" id="voucherCsv" accept=".csv" style="padding: 10px; background: #333; color: white;">
 
             <div class="modal-actions">
-                <button onclick="importVouchers()" class="btn-save">Upload</button>
+                <button onclick="importVouchers()" class="btn-submit">Upload</button>
                 <button onclick="closeDashModal('importVoucherModal')" class="btn-cancel">Cancel</button>
             </div>
         </div>
@@ -413,8 +449,8 @@
                 style="width: 100%; padding: 10px; margin-bottom: 15px;">
 
             <div class="modal-actions">
-                <button onclick="submitSellVoucher()" class="btn-save">Send SMS</button>
                 <button onclick="closeDashModal('sellVoucherModal')" class="btn-cancel">Cancel</button>
+                <button onclick="submitSellVoucher()" class="btn-submit">Send SMS</button>
             </div>
         </div>
     </div>
@@ -431,41 +467,21 @@
                 style="width: 100%; padding: 10px; margin-bottom: 15px;">
 
             <div class="modal-actions">
-                <button onclick="submitChangePass()" class="btn-save">Update</button>
+                <button onclick="submitChangePass()" class="btn-submit">Update</button>
                 <button onclick="closeDashModal('changePassModal')" class="btn-cancel">Cancel</button>
             </div>
         </div>
     </div>
 
     <!-- Custom Alert Modal -->
-    <div id="customAlertModal" class="dashboard-modal hidden" style="z-index: 9999;">
-        <div class="alert-modal-content">
-            <h3 id="customAlertTitle" class="alert-title">Alert</h3>
-            <p id="customAlertMessage" class="alert-message">Message goes here.</p>
-            <div id="customAlertActions">
-                <button onclick="closeCustomAlert()" class="alert-btn success">OK</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Custom Confirm Modal -->
-    <div id="customConfirmModal" class="dashboard-modal hidden" style="z-index: 9999;">
-        <div class="alert-modal-content">
-            <h3 id="customConfirmTitle" class="alert-title">Confirm</h3>
-            <p id="customConfirmMessage" class="alert-message">Are you sure?</p>
-            <div>
-                <button id="confirmCancelBtn" class="alert-btn cancel">Cancel</button>
-                <button id="confirmOkBtn" class="alert-btn success">Confirm</button>
-            </div>
-        </div>
-    </div>
+    <!-- Duplicate Modals Removed -->
 
     <!-- Buy SMS Modal -->
     <div id="buySMSModal" class="dashboard-modal hidden">
         <div class="dashboard-modal-content">
             <h3 class="modal-title">Buy SMS Credits</h3>
             <div class="form-group">
-                <label>Phone Number (MoMo)</label>
+                <label>Phone Number (Mobile Money)</label>
                 <input type="text" id="smsPhone" placeholder="07XX XXX XXX">
             </div>
             <div class="form-group">
@@ -483,8 +499,8 @@
                 <p style="font-size:0.8em; color:#999; margin-top:5px;">Check your phone to approve</p>
             </div>
             <div class="modal-actions">
-                <button class="btn-cancel" onclick="closeDashModal('buySMSModal')">Cancel</button>
-                <button class="btn-submit" onclick="submitBuySMS()">Pay & Topup</button>
+                <button class="btn-cancel" type="button" onclick="closeDashModal('buySMSModal')">Cancel</button>
+                <button class="btn-submit" type="button" onclick="submitBuySMS()">Pay & Topup</button>
             </div>
         </div>
     </div>
@@ -533,27 +549,99 @@
                 <!-- Voucher (CODE) has been sent successfully to (PHONE). -->
             </p>
             <div class="modal-actions center-actions">
-                <button onclick="closeDashModal('successModal')" class="btn-save">OK</button>
+                <button onclick="closeDashModal('successModal')" class="btn-submit">OK</button>
             </div>
         </div>
     </div>
 
     <script src="js/config.js"></script>
     <script>
+        // --- GLOBAL NAVIGATION ---
+        window.switchView_DISABLED = function (viewName) {
+            console.log('Switching to:', viewName);
+            // 1. Hide all views
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+
+            // 2. Determine Target ID
+            let targetId = viewName + 'View';
+            if (viewName === 'dashboard') targetId = 'dashboardView';
+
+            const target = document.getElementById(targetId);
+            if (target) {
+                target.classList.remove('hidden');
+            } else {
+                console.error('View not found:', targetId);
+                return;
+            }
+
+            // 3. Close Sidebar (Mobile)
+            if (window.innerWidth <= 768) {
+                const sidebar = document.querySelector('.sidebar');
+                if (sidebar) sidebar.classList.remove('open');
+            }
+
+            // 4. Data Refresh
+            // Use safe calls (check if function exists)
+            if (viewName === 'categories' && typeof fetchCategoriesList === 'function') fetchCategoriesList();
+            if (viewName === 'packages' && typeof fetchPackagesList === 'function') fetchPackagesList();
+            if (viewName === 'vouchers' && typeof fetchVouchersList === 'function') fetchVouchersList();
+            if (viewName === 'payments' && typeof fetchPaymentsList === 'function') fetchPaymentsList();
+            if (viewName === 'sms' && typeof fetchSMSLogs === 'function') fetchSMSLogs();
+        };
+
+        window.forceReload_DISABLED = function (viewName) {
+            if (viewName === 'categories' && typeof fetchCategoriesList === 'function') fetchCategoriesList();
+            if (viewName === 'packages' && typeof fetchPackagesList === 'function') fetchPackagesList();
+            if (viewName === 'vouchers' && typeof fetchVouchersList === 'function') fetchVouchersList();
+        };
+
+        // --- Sidebar Toggles ---
+        window.toggleSidebar = function () {
+            document.querySelector('.sidebar').classList.toggle('open');
+        };
+
+        window.toggleDesktopSidebar = function () {
+            document.querySelector('.sidebar').classList.toggle('collapsed');
+        };
+
         // --- Custom Alert/Confirm Logic ---
         function showAlert(message, type = 'success') {
             const modal = document.getElementById('customAlertModal');
             const title = document.getElementById('customAlertTitle');
             const msg = document.getElementById('customAlertMessage');
-            const btn = modal.querySelector('button');
+            const icon = document.getElementById('alertIcon');
 
-            title.textContent = type === 'success' ? 'Success' : 'Error';
-            title.style.color = type === 'success' ? '#4caf50' : '#f44336';
+            // Reset classes
+            if (icon) {
+                icon.className = '';
+                icon.style.color = '';
+            }
+
+            if (type === 'success') {
+                title.textContent = 'Success';
+                title.style.color = '#4caf50';
+                if (icon) {
+                    icon.className = 'fas fa-check-circle';
+                    icon.style.color = '#4caf50';
+                }
+            } else if (type === 'error') {
+                title.textContent = 'Error';
+                title.style.color = '#f44336';
+                if (icon) {
+                    icon.className = 'fas fa-times-circle';
+                    icon.style.color = '#f44336';
+                }
+            } else if (type === 'info') {
+                title.textContent = 'Information';
+                title.style.color = '#2196F3'; // Blue
+                if (icon) {
+                    icon.className = 'fas fa-info-circle';
+                    icon.style.color = '#2196F3';
+                }
+            }
+
             msg.textContent = message;
-
-            btn.className = `alert-btn ${type}`;
-            btn.onclick = () => modal.classList.add('hidden');
-
+            // msg.style.color = ''; // Removed to allow CSS theming
             modal.classList.remove('hidden');
         }
 
@@ -708,11 +796,23 @@
 
                                 } else if (checkData.status === 'failed') {
                                     clearInterval(pollInterval);
-                                    // User requested: Display the same error as timeout
-                                    showAlert('Payment check timed out. Please check your phone.', 'error');
+
+                                    // Heuristic: If it failed very fast (< 10s), it was likely Rejected/Insufficient Funds
+                                    // If it failed after a long time, it might be a timeout logic on their end.
+                                    // But to be safe, let's genericize it properly unless it's a true local timeout.
+
+                                    if (progress < 20) {
+                                        showAlert('Payment Rejected. Please check balance/PIN.', 'error');
+                                    } else {
+                                        showAlert('Payment Failed or Timed Out.', 'error');
+                                    }
+
                                     // Reset UI
                                     actionsDiv.style.display = 'flex';
                                     loadingDiv.style.display = 'none';
+
+                                    // Close Modal
+                                    closeDashModal('buySMSModal');
                                 }
                             } catch (e) { console.error('Polling error', e); }
                         }, 2000);
@@ -749,14 +849,23 @@
         }
 
         // --- Logout ---
-        const logoutLink = document.getElementById('logoutLink');
-        if (logoutLink) {
-            logoutLink.onclick = (e) => {
-                e.preventDefault();
-                localStorage.removeItem('wipay_token');
-                window.location.href = 'login.html';
-            };
-        }
+        // --- Logout & Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Logout
+            const logoutLink = document.getElementById('logoutLink');
+            if (logoutLink) {
+                logoutLink.onclick = (e) => {
+                    e.preventDefault();
+                    localStorage.removeItem('wipay_token');
+                    window.location.href = 'login.html';
+                };
+            }
+
+            // Init Mobile Menus
+            if (typeof initMobileMenus === 'function') {
+                initMobileMenus();
+            }
+        });
 
         // --- Modal Logic ---
         function openDashModal(id) {
@@ -941,35 +1050,45 @@
         };
 
         function switchView(viewName) {
-            // Hide all views
-            Object.values(views).forEach(el => el.classList.add('hidden'));
+            console.log('Switching to:', viewName);
 
-            // Show selected view
-            const selected = views[viewName];
+            // 1. Hide all views
+            Object.values(views).forEach(el => { if (el) el.classList.add('hidden'); });
+
+            // 2. Show selected view
+            // Fallback for dashboard if not in map
+            const selected = views[viewName] || document.getElementById(viewName + 'View');
+
             if (selected) {
                 selected.classList.remove('hidden');
 
-                // Update Breadcrumb
+                // 3. Update Breadcrumb
                 const bc = document.querySelector('.breadcrumb');
-                if (breadcrumbMap[viewName]) bc.innerText = breadcrumbMap[viewName];
+                if (breadcrumbMap[viewName] && bc) bc.innerText = breadcrumbMap[viewName];
 
-                // Load Data only if not loaded yet (Basic Caching)
-                // Dashboard stats always refresh for now, or we can debounce it
-                if (viewName === 'dashboard') loadStats(); // Keep dashboard fresh
+                // 4. Close Sidebar on Mobile (CRITICAL FIX)
+                if (window.innerWidth <= 768) {
+                    const sidebar = document.querySelector('.sidebar');
+                    if (sidebar) sidebar.classList.remove('open');
+                }
 
-                if (viewName === 'categories' && !loadedViews.categories) { fetchCategoriesList(); loadedViews.categories = true; }
-                if (viewName === 'packages' && !loadedViews.packages) { fetchPackagesList(); loadedViews.packages = true; }
-                if (viewName === 'vouchers' && !loadedViews.vouchers) { fetchVouchersList(); loadedViews.vouchers = true; }
-                if (viewName === 'payments' && !loadedViews.payments) { fetchPaymentsList(); loadedViews.payments = true; }
-                if (viewName === 'sms' && !loadedViews.sms) { fetchSMSLogs(); loadedViews.sms = true; }
+                // 5. Load Data (with Caching)
+                if (viewName === 'dashboard') loadStats();
+                if (viewName === 'categories') fetchCategoriesList();
+                if (viewName === 'packages') fetchPackagesList();
+                if (viewName === 'vouchers') fetchVouchersList();
+                if (viewName === 'payments') fetchPaymentsList();
+                if (viewName === 'sms') fetchSMSLogs();
 
-                // Highlight Active Nav
+                // 6. Highlight Active Nav
                 document.querySelectorAll('.sidebar-nav li, .mobile-nav-btn').forEach(el => {
                     el.classList.remove('active');
                     if (el.getAttribute('data-view') === viewName) {
                         el.classList.add('active');
                     }
                 });
+            } else {
+                console.error('View not found:', viewName);
             }
         }
 
@@ -988,31 +1107,7 @@
         }
 
         // --- Fetch Lists ---
-        async function fetchSMSLogs() {
-            try {
-                const res = await fetchAuth('/api/admin/sms-logs');
-                const logs = await res.json();
-                const tbody = document.getElementById('smsTableBody');
-                tbody.innerHTML = '';
 
-                if (logs.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#888;">No SMS logs found.</td></tr>';
-                    return;
-                }
-
-                logs.forEach(log => {
-                    const statusColor = log.status === 'success' ? '#4caf50' : (log.status === 'pending' ? '#ff9800' : '#f4436');
-                    tbody.innerHTML += `
-                        <tr>
-                            <td>${new Date(log.created_at).toLocaleString()}</td>
-                            <td>${log.phone_number}</td>
-                            <td>${log.message}</td>
-                            <td style="color: ${statusColor}; font-weight: 500;">${log.status.toUpperCase()}</td>
-                        </tr>
-                    `;
-                });
-            } catch (e) { console.error(e); }
-        }
 
         async function deleteCategory(id, name) {
             showConfirm(`⚠️ WARNING: Deleting category "${name}" will PERMANENTLY DELETE all linked Packages and Vouchers. Are you sure?`, async (confirmed) => {
@@ -1035,86 +1130,7 @@
             });
         }
 
-        async function fetchCategoriesList() {
-            try {
-                const res = await fetchAuth('/api/admin/categories');
-                const rows = await res.json();
-                const tbody = document.getElementById('categoriesTableBody');
-                tbody.innerHTML = '';
-                rows.forEach(r => {
-                    tbody.innerHTML += `
-                        <tr>
-                            <td>${r.name}</td>
-                            <td><button class="btn-cancel" onclick="deleteCategory(${r.id}, '${r.name.replace(/'/g, "\\'")}')" style="padding:4px 8px; font-size:0.7rem;">Delete</button></td>
-                        </tr>
-                    `;
-                });
-            } catch (e) { console.error(e); }
-        }
 
-        async function fetchPackagesList() {
-            try {
-                const res = await fetchAuth('/api/admin/packages');
-                const packs = await res.json();
-                const tbody = document.getElementById('packagesTableBody');
-                tbody.innerHTML = '';
-                packs.forEach(p => {
-                    tbody.innerHTML += `
-                        <tr>
-                            <td>${p.name}</td>
-                            <td>${Number(p.price).toLocaleString()} UGX</td>
-                            <td>${p.validity_hours} Hours</td>
-                            <td>${p.category_name || '-'}</td>
-                        </tr>
-                    `;
-                });
-            } catch (e) { console.error(e); }
-        }
-
-        async function fetchVouchersList() {
-            try {
-                const res = await fetchAuth('/api/admin/vouchers');
-                const vouchers = await res.json();
-                const tbody = document.getElementById('vouchersTableBody');
-                tbody.innerHTML = '';
-
-                if (vouchers.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; color: #888;">No available vouchers found.</td></tr>';
-                    return;
-                }
-
-                vouchers.forEach(v => {
-                    const uniqueId = `v-details-${v.id}`;
-                    tbody.innerHTML += `
-                        <tr onclick="toggleVoucherRow('${uniqueId}')" style="cursor: pointer;">
-                            <td onclick="event.stopPropagation()">
-                                <input type="checkbox" class="voucher-cb" value="${v.id}" onchange="checkVoucherSelection()">
-                            </td>
-                            <td style="font-weight: bold; color: #03a9f4;">
-                                <span style="margin-right: 10px;">▶</span> ${v.code}
-                            </td>
-                        </tr>
-                        <tr id="${uniqueId}" class="hidden" style="background: #222;">
-                            <td></td>
-                            <td style="padding: 15px 25px; border-bottom: 2px solid #444;">
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9rem;">
-                                    <div><strong>Package:</strong> ${v.package_name}</div>
-                                    <div><strong>Ref:</strong> <span style="color: #bbb;">${v.package_ref || '-'}</span></div>
-                                    <div><strong>Created:</strong> ${new Date(v.created_at).toLocaleDateString()}</div>
-                                    <div><strong>Status:</strong> Available</div>
-                                    <div style="grid-column: span 2;">
-                                        <strong>Comment:</strong> <span style="color: #bbb;">${v.comment || '-'}</span>
-                                    </div>
-                                    <div style="grid-column: span 2; margin-top: 5px;">
-                                        <button class="btn-cancel" style="font-size: 0.8rem; padding: 4px 8px;" onclick="deleteSingleVoucher(${v.id})">Delete</button>
-                                    </div>
-                                </div>
-                            </td>
-                        </tr>
-                    `;
-                });
-            } catch (e) { console.error(e); }
-        }
 
         function toggleVoucherRow(id) {
             const row = document.getElementById(id);
@@ -1283,7 +1299,7 @@
         async function loadSMSBalance() {
             const balEl = document.getElementById('sms-balance');
             try {
-                balEl.textContent = 'Loading...';
+                // balEl.textContent = 'Loading...';
                 const res = await fetchAuth('/api/admin/sms-balance');
                 const data = await res.json();
 
@@ -1456,6 +1472,136 @@
             if (!document.getElementById('smsView').classList.contains('hidden')) fetchSMSLogs();
         }, 10000);
 
+        // --- Data Fetching Logic (Consolidated) ---
+        async function fetchCategoriesList() {
+            try {
+                const res = await fetchAuth('/api/admin/categories');
+                const rows = await res.json();
+                const tbody = document.getElementById('categoriesTableBody');
+                tbody.innerHTML = '';
+
+                if (rows.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; color: #888;">No categories found.</td></tr>';
+                    return;
+                }
+
+                rows.forEach(r => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${escapeHtml(r.name)}</td>
+                            <td><button class="btn-cancel btn-sm" onclick="deleteCategory(${r.id}, '${r.name.replace(/'/g, "\\'")}')">Delete</button></td>
+                        </tr>
+                    `;
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        async function fetchPackagesList() {
+            try {
+                const res = await fetchAuth('/api/admin/packages');
+                const pkgs = await res.json();
+                const tbody = document.getElementById('packagesTableBody');
+                tbody.innerHTML = '';
+
+                if (pkgs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color: #888;">No packages found.</td></tr>';
+                    return;
+                }
+
+                pkgs.forEach(p => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${escapeHtml(p.name)}</td>
+                            <td>${Number(p.price).toLocaleString()} UGX</td>
+                            <td>${escapeHtml(p.category_name || '-')}</td>
+                        </tr>
+                    `;
+                });
+            } catch (e) {
+                console.error(e);
+                showAlert('Failed to load packages: ' + e.message, 'error');
+            }
+        }
+
+        async function fetchVouchersList() {
+            try {
+                const res = await fetchAuth('/api/admin/vouchers');
+                const vouchers = await res.json();
+                const tbody = document.getElementById('vouchersTableBody');
+                tbody.innerHTML = '';
+
+                if (vouchers.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; color: #888;">No available vouchers found.</td></tr>';
+                    const btn = document.getElementById('btnDeleteVouchers');
+                    if (btn) btn.classList.add('hidden');
+                    return;
+                }
+
+                vouchers.forEach(v => {
+                    const uniqueId = `v-details-${v.id}`;
+                    tbody.innerHTML += `
+                        <tr onclick="toggleVoucherRow('${uniqueId}')" style="cursor: pointer;">
+                            <td onclick="event.stopPropagation()">
+                                <input type="checkbox" class="voucher-cb" value="${v.id}" onchange="checkVoucherSelection()">
+                            </td>
+                            <td style="font-weight: bold; color: #03a9f4;">
+                                <span style="margin-right: 10px;">▶</span> ${v.code}
+                            </td>
+                        </tr>
+                        <tr id="${uniqueId}" class="hidden detail-row">
+                            <td></td>
+                            <td>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9rem;">
+                                    <div><strong>Package:</strong> ${v.package_name}</div>
+                                    <div><strong>Ref:</strong> <span class="detail-text-muted">${v.package_ref || '-'}</span></div>
+                                    <div><strong>Created:</strong> ${new Date(v.created_at).toLocaleDateString()}</div>
+                                    <div><strong>Status:</strong> Available</div>
+                                    <div style="grid-column: span 2;">
+                                        <strong>Comment:</strong> <span class="detail-text-muted">${v.comment || '-'}</span>
+                                    </div>
+                                    <div style="grid-column: span 2; margin-top: 5px;">
+                                        <button class="btn-cancel" style="font-size: 0.8rem; padding: 4px 8px;" onclick="deleteSingleVoucher(${v.id})">Delete</button>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } catch (e) {
+                console.error(e);
+                showAlert('Failed to load vouchers: ' + e.message, 'error');
+            }
+        }
+
+        async function fetchSMSLogs() {
+            try {
+                const res = await fetchAuth('/api/admin/sms-logs');
+                const logs = await res.json();
+                const tbody = document.getElementById('smsTableBody');
+                tbody.innerHTML = '';
+
+                if (logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: #888;">No SMS logs found.</td></tr>';
+                    return;
+                }
+
+                logs.forEach(l => {
+                    const statusColor = l.status === 'sent' ? '#4caf50' : (l.status === 'pending' ? '#ff9800' : '#f44336');
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${new Date(l.created_at).toLocaleString()}</td>
+                            <td>${escapeHtml(l.phone_number)}</td>
+                            <td>${escapeHtml(l.message)}</td>
+                            <td style="color: ${statusColor}; font-weight: 500;">${escapeHtml(l.status.toUpperCase())}</td>
+                        </tr>
+                    `;
+                });
+            } catch (e) {
+                console.error(e);
+                showAlert('Failed to load logs: ' + e.message, 'error');
+            }
+        }
+
         async function fetchPaymentsList() {
             try {
                 const res = await fetchAuth('/api/admin/transactions');
@@ -1485,8 +1631,50 @@
                     `;
                 });
             } catch (e) { console.error(e); }
-
         }
+
+        // --- User Dropdown ---
+        function toggleUserMenu(e) {
+            e.stopPropagation();
+            const menu = document.getElementById('userDropdown');
+            menu.classList.toggle('hidden');
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const menu = document.getElementById('userDropdown');
+            if (!menu && !menu.classList) return;
+            if (!menu.classList.contains('hidden') && !e.target.closest('.user-menu-container')) {
+                menu.classList.add('hidden');
+            }
+        });
+
+        // --- Theme Toggle ---
+        function toggleTheme() {
+            const body = document.body;
+            body.classList.toggle('light'); // Legacy
+            body.classList.toggle('dark-mode');
+            const isDark = body.classList.contains('dark-mode');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        }
+
+        // --- Mobile Stats Toggle ---
+        function toggleStats() {
+            const grid = document.getElementById('statsGrid');
+            const btn = document.querySelector('#viewMoreContainer button');
+            grid.classList.toggle('expanded');
+
+            const isExpanded = grid.classList.contains('expanded');
+            btn.innerHTML = isExpanded ? 'Show Less <span class="arrow">↑</span>' : 'View More <span class="arrow">↓</span>';
+        }
+
+        // Init Theme on Load
+        (function initTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'dark') {
+                document.body.classList.add('dark-mode');
+            }
+        })();
 
         // --- Mobile Sidebar Toggle ---
         // --- Sidebar Logic ---
@@ -1703,7 +1891,7 @@
                 <i class="fas fa-info-circle" style="font-size: 3rem; color: #4caf50;" id="alertIcon"></i>
             </div>
             <h3 id="customAlertTitle">Alert</h3>
-            <p id="customAlertMessage" style="color: #555; margin-bottom: 20px;">Message goes here</p>
+            <p id="customAlertMessage" style="margin-bottom: 20px;">Message goes here</p>
             <button onclick="document.getElementById('customAlertModal').classList.add('hidden')" class="btn-submit"
                 style="width: 100%;">OK</button>
         </div>
@@ -1716,7 +1904,7 @@
                 <i class="fas fa-question-circle" style="font-size: 3rem; color: #FF9800;"></i>
             </div>
             <h3>Confirmation</h3>
-            <p id="customConfirmMessage" style="color: #555; margin-bottom: 20px;">Are you sure?</p>
+            <p id="customConfirmMessage" style="margin-bottom: 20px;">Are you sure?</p>
             <div class="modal-actions" style="justify-content: center; gap: 10px;">
                 <button id="confirmCancelBtn" class="btn-cancel">Cancel</button>
                 <button id="confirmOkBtn" class="btn-submit">Confirm</button>
@@ -1739,17 +1927,7 @@
         </div>
     </div>
 
-    <style>
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
 
-            100% {
-                transform: rotate(360deg);
-            }
-        }
-    </style>
 
     <!-- Success Modal -->
     <div id="successModal" class="dashboard-modal hidden" style="z-index: 11001;">
@@ -1803,7 +1981,6 @@
         </div>
     </div>
     </div>
-</body>
 </body>
 
 </html>

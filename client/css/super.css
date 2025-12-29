@@ -1,0 +1,35 @@
+/* Custom Overrides for Super Admin */
+body {
+    background-color: #f0f2f5;
+    /* Slightly darker than white for contrast */
+}
+
+.sidebar {
+    background: #1a1a2e;
+}
+
+.stat-card {
+    border: none !important;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.stat-card .stat-value,
+.stat-card .stat-label {
+    color: white !important;
+    /* Force white text */
+    border: none;
+}
+
+.stat-card.purple {
+    background: linear-gradient(135deg, #673ab7, #512da8);
+}
+
+.stat-card.blue {
+    background: linear-gradient(135deg, #2196F3, #1976D2);
+    border-top: none;
+}
+
+.stat-card.green {
+    background: linear-gradient(135deg, #009688, #00796B);
+    border-top: none;
+}

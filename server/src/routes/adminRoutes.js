@@ -251,10 +251,14 @@ router.post('/admin/buy-sms', async (req, res) => {
     if (!phone_number) return res.status(400).json({ error: 'Phone number is required' });
 
     try {
-        // Format Phone
-        let formattedPhone = phone_number.trim();
-        if (formattedPhone.startsWith('0')) formattedPhone = '+256' + formattedPhone.slice(1);
-        else if (!formattedPhone.startsWith('+')) formattedPhone = '+' + formattedPhone;
+        // Format Phone (Robust)
+        let formattedPhone = phone_number.replace(/\s+/g, ''); // Remove spaces
+        if (formattedPhone.startsWith('256')) formattedPhone = '+' + formattedPhone;
+        else if (formattedPhone.startsWith('0')) formattedPhone = '+256' + formattedPhone.slice(1);
+        else if (!formattedPhone.startsWith('+')) formattedPhone = '+256' + formattedPhone; // Assume local if completely raw
+
+        // Limit Check (Uganda numbers are usually 13 chars: +256 7XX XXX XXX)
+        if (formattedPhone.length < 10) return res.status(400).json({ error: 'Invalid phone number length' });
 
         const reference = `SMS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
@@ -283,7 +287,8 @@ router.post('/admin/buy-sms', async (req, res) => {
         });
 
         const paymentData = await response.json();
-        console.log(`[SMS-TOPUP] Init Response (${response.status}):`, JSON.stringify(paymentData));
+        console.log(`[SMS-TOPUP-DEBUG] Response Status: ${response.status}`);
+        console.log(`[SMS-TOPUP-DEBUG] Response Body:`, JSON.stringify(paymentData, null, 2));
 
         if (response.ok) {
             res.json({
@@ -292,14 +297,16 @@ router.post('/admin/buy-sms', async (req, res) => {
                 reference: reference
             });
         } else {
-            console.error(`[SMS-TOPUP] Gateway Failed:`, paymentData);
+            console.error(`[SMS-TOPUP-ERROR] Gateway Failed:`, paymentData);
             await db.query('UPDATE sms_fees SET status = "failed" WHERE reference = ?', [reference]);
-            const errorMsg = paymentData.message || 'Unknown error';
-            res.status(400).json({ error: `Payment gateway failed: ${errorMsg}`, details: paymentData });
+
+            // Pass the exact message from Relworx to the frontend
+            const errorMsg = paymentData.message || paymentData.description || 'Unknown gateway error';
+            res.status(400).json({ error: errorMsg, details: paymentData });
         }
     } catch (err) {
         console.error('Buy SMS Error:', err);
-        res.status(500).json({ error: 'Failed to process purchase' });
+        res.status(500).json({ error: 'Failed to process purchase: ' + err.message });
     }
 });
 
