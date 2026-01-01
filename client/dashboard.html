@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>WIPAY - Admin Dashboard</title>
+    <link rel="icon" type="image/png" href="img/favicon.png">
     <!-- Google Fonts: Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,6 +13,7 @@
     <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/dashboard.css">
+    <script src="/socket.io/socket.io.js"></script>
     <script>
         if (!localStorage.getItem('wipay_token')) {
             window.location.href = 'login.html';
@@ -19,14 +21,10 @@
     </script>
 </head>
 
-<body>
+<body class="dark-mode">
     <div class="dashboard-container">
         <!-- Sidebar -->
         <aside class="sidebar">
-            <div class="search-box">
-                <input type="text" placeholder="Start typing to filter...">
-            </div>
-
             <nav class="sidebar-nav">
                 <div class="nav-section">DATA</div>
                 <ul>
@@ -46,6 +44,8 @@
                 <ul>
                     <li data-view="payments"><a href="#" onclick="switchView('payments'); return false;">Payments</a>
                     </li>
+                    <li data-view="myTransactions"><a href="#" onclick="switchView('myTransactions'); return false;">My
+                            Transactions</a></li>
                 </ul>
 
                 <div class="nav-section">COMMS</div>
@@ -335,7 +335,11 @@
             <div id="paymentsView" class="view-section hidden">
                 <div class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
                     <h2>Transaction History</h2>
-                    <button class="btn-submit" onclick="fetchPaymentsList()">Refresh</button>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn-submit" onclick="openDashModal('withdrawModal')"
+                            style="background-color: #ff9800;">Withdraw</button>
+                        <button class="btn-submit" onclick="fetchPaymentsList()">Refresh</button>
+                    </div>
                 </div>
                 <div class="table-responsive table-scroll-view">
                     <table class="data-table">
@@ -373,6 +377,31 @@
                             </tr>
                         </thead>
                         <tbody id="smsTableBody">
+                            <!-- JS renders rows here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- My Transactions View -->
+            <div id="myTransactionsView" class="view-section hidden">
+                <div class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>My Transactions</h2>
+                    <button class="btn-submit" onclick="fetchMyTransactions()">Refresh</button>
+                </div>
+                <div class="table-responsive table-scroll-view">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Amount</th>
+                                <th>Status</th>
+                                <th>Description</th>
+                                <th>Ref</th>
+                            </tr>
+                        </thead>
+                        <tbody id="myTransactionsTableBody">
                             <!-- JS renders rows here -->
                         </tbody>
                     </table>
@@ -474,7 +503,76 @@
     </div>
 
     <!-- Custom Alert Modal -->
-    <!-- Duplicate Modals Removed -->
+    <div id="customAlertModal" class="dashboard-modal hidden">
+        <div class="dashboard-modal-content">
+            <h3 id="customAlertTitle">Alert</h3>
+            <div style="text-align: center; margin-bottom: 20px;">
+                <i id="alertIcon" class="fas fa-info-circle" style="font-size: 3rem; color: #2196F3;"></i>
+            </div>
+            <p id="customAlertMessage" style="text-align: center; margin-bottom: 20px;">Message goes here.</p>
+            <div class="modal-actions center-actions">
+                <button onclick="closeCustomAlert()" class="btn-submit">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirm Modal -->
+    <div id="customConfirmModal" class="dashboard-modal hidden">
+        <div class="dashboard-modal-content">
+            <h3>Confirm Action</h3>
+            <p id="customConfirmMessage">Are you sure?</p>
+            <div class="modal-actions">
+                <button id="confirmCancelBtn" class="btn-cancel">Cancel</button>
+                <button id="confirmOkBtn" class="btn-submit">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div id="successModal" class="dashboard-modal hidden" style="z-index: 6000;">
+        <div class="dashboard-modal-content success-content">
+            <div class="success-header">
+                <img src="img/favicon.png" alt="WiPay Logo" class="success-logo">
+            </div>
+            <div class="success-icon">
+                <div class="checkmark-circle">
+                    <div class="background"></div>
+                    <div class="checkmark draw"></div>
+                </div>
+            </div>
+            <h3 class="success-title">Success!</h3>
+            <p id="successMessage" class="success-message">
+                <!-- Voucher (CODE) has been sent successfully to (PHONE). -->
+            </p>
+            <div class="modal-actions center-actions">
+                <button onclick="closeDashModal('successModal')" class="btn-submit">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Subscription Modal -->
+    <div id="subscriptionModal" class="dashboard-modal hidden">
+        <div class="dashboard-modal-content">
+            <h3>Subscription Status</h3>
+            <p id="subStatusText" style="margin-bottom: 20px;">Checking status...</p>
+            
+            <div id="renewSection">
+                <label style="display:block; margin-bottom:10px; font-weight:bold;">Renew Subscription via Mobile Money</label>
+                <input type="text" id="renewPhone" placeholder="Enter Phone (07XX...)" style="margin-bottom:10px;">
+                <select id="renewMonths" style="margin-bottom:15px;">
+                    <option value="1">1 Month - 20,000 UGX</option>
+                    <option value="3">3 Months - 60,000 UGX</option>
+                    <option value="6">6 Months - 120,000 UGX</option>
+                    <option value="12">1 Year - 240,000 UGX</option>
+                </select>
+            </div>
+
+            <div class="modal-actions">
+                <button onclick="closeDashModal('subscriptionModal')" class="btn-cancel">Close</button>
+                <button onclick="startSubscriptionRenewal()" class="btn-submit">Renew Now</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Buy SMS Modal -->
     <div id="buySMSModal" class="dashboard-modal hidden">
@@ -486,7 +584,12 @@
             </div>
             <div class="form-group">
                 <label>Amount (UGX)</label>
-                <input type="number" id="smsAmount" placeholder="Enter amount" min="500">
+                <input type="number" id="smsAmount" placeholder="Enter amount" min="500"
+                    oninput="calculateSMSPreview(this.value)">
+                <small id="smsPreview"
+                    style="display: block; margin-top: 5px; color: var(--text-muted); font-size: 0.85rem;">
+                    Unknown SMS count
+                </small>
             </div>
 
             <!-- Inline Progress Bar (Hidden by default) -->
@@ -512,22 +615,37 @@
             <p style="color:#666; font-size:0.9rem; margin-bottom:15px;">Transfer funds from your Wallet to Mobile
                 Money.</p>
 
-            <div class="form-group">
-                <label>Amount (UGX)</label>
-                <input type="number" id="withdrawAmount" placeholder="Enter amount">
+            <!-- Step 1: Details -->
+            <div id="withdrawStep1">
+                <div class="form-group">
+                    <label>Amount (UGX)</label>
+                    <input type="number" id="withdrawAmount" placeholder="Enter amount">
+                </div>
+                <div class="form-group">
+                    <label>Phone Number</label>
+                    <input type="text" id="withdrawPhone" placeholder="07XX XXX XXX">
+                </div>
+                <div class="form-group">
+                    <label>Description (Optional)</label>
+                    <input type="text" id="withdrawDesc" placeholder="Reason for withdrawal">
+                </div>
             </div>
-            <div class="form-group">
-                <label>Phone Number</label>
-                <input type="text" id="withdrawPhone" placeholder="07XX XXX XXX">
-            </div>
-            <div class="form-group">
-                <label>Description (Optional)</label>
-                <input type="text" id="withdrawDesc" placeholder="Reason for withdrawal">
+
+            <!-- Step 2: OTP -->
+            <div id="withdrawStep2" class="hidden">
+                <div class="form-group" style="text-align: center;">
+                    <label style="font-size: 1.1rem; color: #ff9800;">Enter OTP Code</label>
+                    <p style="font-size: 0.85rem; color: #666; margin-bottom: 10px;">A code has been sent to your email.
+                    </p>
+                    <input type="text" id="withdrawOTP" placeholder="XXXXXX"
+                        style="text-align: center; letter-spacing: 5px; font-size: 1.5rem;">
+                </div>
             </div>
 
             <div class="modal-actions">
                 <button class="btn-cancel" onclick="closeDashModal('withdrawModal')">Cancel</button>
-                <button class="btn-submit" onclick="submitWithdrawal()">Withdraw</button>
+                <button class="btn-submit" id="btnWithdrawNext">Next</button>
+                <button class="btn-submit hidden" id="btnWithdrawConfirm">Confirm & Withdraw</button>
             </div>
         </div>
     </div>
@@ -557,7 +675,8 @@
     <script src="js/config.js"></script>
     <script>
         // --- GLOBAL NAVIGATION ---
-        window.switchView_DISABLED = function (viewName) {
+        // --- GLOBAL NAVIGATION ---
+        window.switchView = function (viewName) {
             console.log('Switching to:', viewName);
             // 1. Hide all views
             document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
@@ -581,18 +700,12 @@
             }
 
             // 4. Data Refresh
-            // Use safe calls (check if function exists)
             if (viewName === 'categories' && typeof fetchCategoriesList === 'function') fetchCategoriesList();
             if (viewName === 'packages' && typeof fetchPackagesList === 'function') fetchPackagesList();
             if (viewName === 'vouchers' && typeof fetchVouchersList === 'function') fetchVouchersList();
             if (viewName === 'payments' && typeof fetchPaymentsList === 'function') fetchPaymentsList();
             if (viewName === 'sms' && typeof fetchSMSLogs === 'function') fetchSMSLogs();
-        };
-
-        window.forceReload_DISABLED = function (viewName) {
-            if (viewName === 'categories' && typeof fetchCategoriesList === 'function') fetchCategoriesList();
-            if (viewName === 'packages' && typeof fetchPackagesList === 'function') fetchPackagesList();
-            if (viewName === 'vouchers' && typeof fetchVouchersList === 'function') fetchVouchersList();
+            if (viewName === 'myTransactions' && typeof fetchMyTransactions === 'function') fetchMyTransactions();
         };
 
         // --- Sidebar Toggles ---
@@ -721,6 +834,22 @@
                 // If it is a header error, retry without custom headers just to test? No, auth is needed.
                 throw e;
             }
+        }
+
+        // Live SMS Calculator
+        function calculateSMSPreview(val) {
+            const amount = parseFloat(val);
+            const previewEl = document.getElementById('smsPreview');
+
+            if (!amount || isNaN(amount) || amount < 0) {
+                previewEl.textContent = 'Enter valid amount';
+                previewEl.style.color = 'var(--text-muted)';
+                return;
+            }
+
+            const smsCount = Math.floor(amount / 35);
+            previewEl.innerHTML = `Approx. <strong>${smsCount.toLocaleString()}</strong> SMS`;
+            previewEl.style.color = 'var(--primary-color)';
         }
 
         function submitBuySMS() {
@@ -873,6 +1002,18 @@
             if (id === 'addPackageModal') loadCategoriesForSelect();
             if (id === 'importVoucherModal') loadPackagesForSelect('importPackageId');
             if (id === 'sellVoucherModal') loadPackagesForSelect('sellPackageId');
+
+            // Reset Withdraw Modal
+            if (id === 'withdrawModal') {
+                document.getElementById('withdrawStep1').classList.remove('hidden');
+                document.getElementById('withdrawStep2').classList.add('hidden');
+                document.getElementById('btnWithdrawNext').classList.remove('hidden');
+                document.getElementById('btnWithdrawConfirm').classList.add('hidden');
+                document.getElementById('withdrawOTP').value = '';
+                document.getElementById('withdrawAmount').value = '';
+                document.getElementById('withdrawPhone').value = '';
+                document.getElementById('withdrawDesc').value = '';
+            }
         }
 
         function closeDashModal(id) {
@@ -1051,6 +1192,7 @@
 
         function switchView(viewName) {
             console.log('Switching to:', viewName);
+            localStorage.setItem('currentView', viewName);
 
             // 1. Hide all views
             Object.values(views).forEach(el => { if (el) el.classList.add('hidden'); });
@@ -1210,7 +1352,9 @@
                 return showAlert(`Insufficient SMS Balance (${currentSMSBalance} UGX). Please top up.`, 'error');
             }
 
-            showConfirm(`Send voucher for selected package to ${phone}?`, async () => {
+            showConfirm(`Send voucher for selected package to ${phone}?`, async (confirmed) => {
+                if (!confirmed) return;
+                
                 try {
                     const res = await fetchAuth('/api/admin/sell-voucher', {
                         method: 'POST',
@@ -1222,10 +1366,8 @@
                     if (res.ok) {
                         closeDashModal('sellVoucherModal');
                         loadStats();
-                        loadStats();
                         forceReload('vouchers');
                         fetchSMSLogs();
-                        // Special Success Modal for Sell Voucher (keep existing one as it is specific)
                         document.getElementById('successMessage').textContent = `Voucher sent to ${phone}.`;
                         openDashModal('successModal');
                     } else {
@@ -1233,6 +1375,44 @@
                     }
                 } catch (e) { console.error(e); }
             });
+        }
+
+        // --- Subscription Logic ---
+        async function startSubscriptionRenewal() {
+            const phone = document.getElementById('renewPhone').value;
+            const months = document.getElementById('renewMonths').value;
+
+            if (!phone || phone.length < 10) return showAlert('Enter valid phone number', 'error');
+
+            const btn = document.querySelector('#subscriptionModal .btn-submit');
+            const originalText = btn.innerText;
+            btn.innerText = 'Processing...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetchAuth('/api/admin/renew-subscription', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone_number: phone, months: Number(months) })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    closeDashModal('subscriptionModal');
+                    const successMsg = `Renewal Initiated!<br><br>Please check your phone (<b>${escapeHtml(phone)}</b>) to approve the payment.<br><br>Ref: ${data.reference}`;
+                    document.getElementById('successMessage').innerHTML = successMsg;
+                    openDashModal('successModal');
+                } else {
+                    showAlert(data.error || 'Renewal failed', 'error');
+                }
+            } catch (e) {
+                console.error(e);
+                showAlert('Connection error', 'error');
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
         }
 
 
@@ -1459,21 +1639,51 @@
             });
         }
 
-        // Refresh every 10 seconds (Smart Refresh)
-        setInterval(() => {
+        // Initialize Socket.IO
+        const socket = io();
+
+        socket.on('connect', () => {
+            console.log('Connected to WebSocket server');
+        });
+
+        socket.on('data_update', (data) => {
+            console.log('Real-time Update:', data.type);
+            // Refresh Statistics on every update
             loadStats();
             loadSMSBalance();
 
-            // Refresh Active Table
-            if (!document.getElementById('categoriesView').classList.contains('hidden')) fetchCategoriesList();
-            if (!document.getElementById('packagesView').classList.contains('hidden')) fetchPackagesList();
-            if (!document.getElementById('vouchersView').classList.contains('hidden')) fetchVouchersList();
-            if (!document.getElementById('paymentsView').classList.contains('hidden')) fetchPaymentsList();
-            if (!document.getElementById('smsView').classList.contains('hidden')) fetchSMSLogs();
-        }, 10000);
+            // Refresh Tables based on type
+            if (data.type === 'categories' && !document.getElementById('categoriesView').classList.contains('hidden')) fetchCategoriesList();
+            if (data.type === 'packages' && !document.getElementById('packagesView').classList.contains('hidden')) fetchPackagesList();
+            if (data.type === 'vouchers' && !document.getElementById('vouchersView').classList.contains('hidden')) fetchVouchersList();
+            if (data.type === 'payments' && !document.getElementById('paymentsView').classList.contains('hidden')) fetchPaymentsList();
+            if (data.type === 'sms' && !document.getElementById('smsView').classList.contains('hidden')) fetchSMSLogs();
+        });
+
+
+        // Refresh every 30 seconds (Just Stats/Backup)
+        setInterval(() => {
+            loadStats();
+            loadSMSBalance();
+        }, 30000);
+
+        // --- Shimmer Helper ---
+        function showTableShimmer(tbodyId, colCount) {
+            const tbody = document.getElementById(tbodyId);
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            for (let i = 0; i < 5; i++) {
+                let cols = '';
+                for (let j = 0; j < colCount; j++) {
+                    cols += '<td><div class="shimmer-line"></div></td>';
+                }
+                tbody.innerHTML += `<tr class="shimmer-row">${cols}</tr>`;
+            }
+        }
 
         // --- Data Fetching Logic (Consolidated) ---
         async function fetchCategoriesList() {
+            showTableShimmer('categoriesTableBody', 2);
             try {
                 const res = await fetchAuth('/api/admin/categories');
                 const rows = await res.json();
@@ -1497,6 +1707,7 @@
         }
 
         async function fetchPackagesList() {
+            showTableShimmer('packagesTableBody', 3);
             try {
                 const res = await fetchAuth('/api/admin/packages');
                 const pkgs = await res.json();
@@ -1524,6 +1735,7 @@
         }
 
         async function fetchVouchersList() {
+            showTableShimmer('vouchersTableBody', 2);
             try {
                 const res = await fetchAuth('/api/admin/vouchers');
                 const vouchers = await res.json();
@@ -1602,6 +1814,54 @@
             }
         }
 
+        async function fetchMyTransactions() {
+            showTableShimmer('myTransactionsTableBody', 6);
+            try {
+                const res = await fetchAuth('/api/admin/my-transactions');
+                const rows = await res.json();
+                const tbody = document.getElementById('myTransactionsTableBody');
+                tbody.innerHTML = '';
+
+                if (rows.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: #888;">No transactions found.</td></tr>';
+                    return;
+                }
+
+                rows.forEach(r => {
+                    let typeBadge = '';
+                    // Amount color ignored, hardcoded to white as requested
+                    let amountColor = '#ffffff';
+
+                    if (r.type === 'Withdrawal') {
+                        typeBadge = '<span class="badge bg-danger">Withdrawal</span>';
+                    } else if (r.type === 'Subscription') {
+                        typeBadge = '<span class="badge bg-warning">Subscription</span>';
+                    } else {
+                        typeBadge = `<span class="badge bg-secondary">${escapeHtml(r.type)}</span>`;
+                    }
+
+                    let statusColor = '#888';
+                    if (r.status === 'success') statusColor = '#4caf50';
+                    else if (r.status === 'failed') statusColor = '#f44336';
+                    else if (r.status === 'pending') statusColor = '#ff9800';
+
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${new Date(r.created_at).toLocaleString()}</td>
+                            <td>${typeBadge}</td>
+                            <td style="color: #ffffff; font-weight: bold;">${Number(r.amount).toLocaleString()} UGX</td>
+                            <td style="color: ${statusColor}; font-weight: 500;">${escapeHtml((r.status || 'success').toUpperCase())}</td>
+                            <td>${escapeHtml(r.description || '-')}</td>
+                            <td><small style="color:#aaa">${escapeHtml(r.reference || '-')}</small></td>
+                        </tr>
+                    `;
+                });
+            } catch (e) {
+                console.error(e);
+                showAlert('Failed to load transactions: ' + e.message, 'error');
+            }
+        }
+
         async function fetchPaymentsList() {
             try {
                 const res = await fetchAuth('/api/admin/transactions');
@@ -1669,9 +1929,15 @@
         }
 
         // Init Theme on Load
+        // Init Theme on Load (Default Dark)
         (function initTheme() {
             const savedTheme = localStorage.getItem('theme');
-            if (savedTheme === 'dark') {
+            // If saved is light, remove dark mode. Otherwise (null or dark), allow dark mode.
+            if (savedTheme === 'light') {
+                document.body.classList.remove('dark-mode');
+                document.body.classList.add('light');
+            } else {
+                // Ensure dark mode is active (default)
                 document.body.classList.add('dark-mode');
             }
         })();
@@ -1716,6 +1982,10 @@
         document.addEventListener('DOMContentLoaded', () => {
             initMobileMenus();
             checkSubscriptionStatus();
+
+            // Restore View
+            const savedView = localStorage.getItem('currentView') || 'dashboard';
+            switchView(savedView);
         });
 
         const SUB_RATE = 20000;
@@ -1882,105 +2152,127 @@
                 document.getElementById('expiryBanner').style.display = 'none';
             }
         }
+
+        // --- Withdrawal Logic (OTP) ---
+        // --- Withdrawal Logic (OTP) ---
+        async function initiateWithdrawal() {
+            console.log('Initiate Withdrawal Triggered');
+            const amount = document.getElementById('withdrawAmount').value;
+            const phone = document.getElementById('withdrawPhone').value;
+
+            if (!amount || !phone) {
+                console.warn('Withdrawal Missing Fields:', { amount, phone });
+                return showAlert('Please enter amount and phone number', 'error');
+            }
+
+            const btn = document.getElementById('btnWithdrawNext');
+            const originalText = btn.innerText;
+            btn.innerText = 'Sending OTP...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetchAuth('/api/admin/withdraw/initiate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount, phone_number: phone })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    // Switch to Step 2
+                    document.getElementById('withdrawStep1').classList.add('hidden');
+                    document.getElementById('withdrawStep2').classList.remove('hidden');
+                    document.getElementById('btnWithdrawNext').classList.add('hidden');
+                    document.getElementById('btnWithdrawConfirm').classList.remove('hidden');
+                    showAlert('OTP sent to your email!', 'success');
+                } else {
+                    showAlert(data.error || 'Failed to initiate', 'error');
+                }
+            } catch (e) {
+                console.error('Initiate Withdrawal Error:', e);
+                showAlert('Connection Error', 'error');
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function submitWithdrawal() {
+            console.log('Submit Withdrawal Triggered');
+            const amount = document.getElementById('withdrawAmount').value;
+            const phone = document.getElementById('withdrawPhone').value;
+            const desc = document.getElementById('withdrawDesc').value;
+            const otp = document.getElementById('withdrawOTP').value;
+
+            console.log('Withdrawal Data:', { amount, phone, otp });
+
+            if (!otp) {
+                console.warn('Missing OTP');
+                return showAlert('Please enter the OTP code', 'error');
+            }
+
+            const btn = document.getElementById('btnWithdrawConfirm');
+            if (btn) {
+                btn.innerText = 'Processing...';
+                btn.disabled = true;
+            }
+
+            try {
+                const res = await fetchAuth('/api/admin/withdraw', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount, phone_number: phone, description: desc, otp })
+                });
+
+                const data = await res.json();
+
+                if (res.ok) {
+                    closeDashModal('withdrawModal');
+                    showAlert('Withdrawal Successful!', 'success');
+                    loadStats();
+                    // Also refresh payments list if visible context
+                    fetchPaymentsList();
+                } else {
+                    showAlert(data.error || 'Withdrawal Failed', 'error');
+                }
+            } catch (e) {
+                console.error('Submit Withdrawal Error:', e);
+                showAlert('Connection Error', 'error');
+            } finally {
+                if (btn) {
+                    btn.innerText = 'Confirm & Withdraw';
+                    btn.disabled = false;
+                }
+            }
+        }
+
+        // Global Assignment and Event Listeners
+        window.initiateWithdrawal = initiateWithdrawal;
+        window.submitWithdrawal = submitWithdrawal;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const nextBtn = document.getElementById('btnWithdrawNext');
+            const confirmBtn = document.getElementById('btnWithdrawConfirm');
+
+            if (nextBtn) {
+                nextBtn.addEventListener('click', (e) => {
+                    e.preventDefault(); // Prevent form submission if applicable
+                    initiateWithdrawal();
+                });
+                console.log('Withdraw Next Button Listener Attached');
+            } else {
+                console.error('Withdraw Next Button Not Found');
+            }
+
+            if (confirmBtn) {
+                confirmBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    submitWithdrawal();
+                });
+            }
+        });
     </script>
-
-    <!-- Custom Alert Modal (Higher Z-Index) -->
-    <div id="customAlertModal" class="dashboard-modal hidden" style="z-index: 11000;">
-        <div class="dashboard-modal-content" style="max-width: 400px; text-align: center;">
-            <div style="margin-bottom: 15px;">
-                <i class="fas fa-info-circle" style="font-size: 3rem; color: #4caf50;" id="alertIcon"></i>
-            </div>
-            <h3 id="customAlertTitle">Alert</h3>
-            <p id="customAlertMessage" style="margin-bottom: 20px;">Message goes here</p>
-            <button onclick="document.getElementById('customAlertModal').classList.add('hidden')" class="btn-submit"
-                style="width: 100%;">OK</button>
-        </div>
-    </div>
-
-    <!-- Custom Confirm Modal (Higher Z-Index) -->
-    <div id="customConfirmModal" class="dashboard-modal hidden" style="z-index: 11000;">
-        <div class="dashboard-modal-content" style="max-width: 400px; text-align: center;">
-            <div style="margin-bottom: 15px;">
-                <i class="fas fa-question-circle" style="font-size: 3rem; color: #FF9800;"></i>
-            </div>
-            <h3>Confirmation</h3>
-            <p id="customConfirmMessage" style="margin-bottom: 20px;">Are you sure?</p>
-            <div class="modal-actions" style="justify-content: center; gap: 10px;">
-                <button id="confirmCancelBtn" class="btn-cancel">Cancel</button>
-                <button id="confirmOkBtn" class="btn-submit">Confirm</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Processing Modal (New) -->
-    <div id="processingModal" class="dashboard-modal hidden" style="z-index: 11000;">
-        <div class="dashboard-modal-content" style="text-align: center; background: #333; color: white;">
-            <div class="spinner"
-                style="margin: 20px auto; border: 4px solid #555; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite;">
-            </div>
-            <h3 style="color: white;">Processing Payment...</h3>
-            <p style="color: #ddd;">Please check your phone to approve the transaction.</p>
-            <div id="progressBar"
-                style="width: 100%; height: 6px; background: #555; border-radius: 3px; margin-top: 15px; overflow: hidden;">
-                <div style="width: 0%; height: 100%; background: #3498db; transition: width 0.5s;"></div>
-            </div>
-        </div>
-    </div>
-
-
-
-    <!-- Success Modal -->
-    <div id="successModal" class="dashboard-modal hidden" style="z-index: 11001;">
-        <div class="dashboard-modal-content" style="text-align: center;">
-            <div style="margin-bottom: 10px;">
-                <i class="fas fa-check-circle" style="font-size: 4rem; color: #4caf50;"></i>
-            </div>
-            <h3 style="color: #4caf50; margin-bottom: 10px;">Transaction Successful!</h3>
-            <p id="successMessage" style="font-size: 1.1em; color: #333; margin-bottom: 20px;"></p>
-            <button onclick="closeDashModal('successModal')" class="btn-submit" style="width: 100%;">Awesome!</button>
-        </div>
-    </div>
-
-    <!-- Withdraw Modal -->
-    <div id="withdrawModal" class="dashboard-modal hidden">
-        <!-- ... existing content ... -->
-    </div>
-
-    <!-- Subscription Modal -->
-    <div id="subscriptionModal" class="dashboard-modal hidden" style="z-index: 10002;">
-        <div class="dashboard-modal-content">
-            <h3 style="color: #4caf50;">Renew Subscription</h3>
-            <p style="font-size: 0.9em; color: #666; margin-bottom: 20px;">
-                Keep your account active to continue managing vouchers & payments.
-            </p>
-
-            <label>Confirm Phone Number</label>
-            <input type="text" id="subPhone" placeholder="+256..."
-                style="width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 5px;">
-
-            <label>Duration</label>
-            <select id="subDuration" onchange="updateSubAmount()"
-                style="width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 5px;">
-                <option value="1">1 Month</option>
-                <option value="3">3 Months</option>
-                <option value="6">6 Months</option>
-                <option value="12">1 Year (Best Value)</option>
-            </select>
-
-            <div
-                style="background: rgba(0, 0, 0, 0.1); padding: 10px; border-radius: 5px; margin-bottom: 20px; text-align: center;">
-                <span style="display: block; font-size: 0.8em; color: #888; margin-bottom: 5px;">TOTAL TO PAY</span>
-                <strong id="subAmountDisplay" style="font-size: 1.5em; color: #fff;">20,000 UGX</strong>
-            </div>
-
-            <div class="modal-actions">
-                <button onclick="initiateSubscription()" class="btn-success" id="btnPaySub">Pay Now</button>
-                <button onclick="closeDashModal('subscriptionModal')" class="btn-cancel">Cancel</button>
-            </div>
-            <p id="subStatusMsg" style="margin-top: 10px; font-size: 0.85em; color: #666; text-align: center;"></p>
-        </div>
-    </div>
-    </div>
 </body>
 
 </html>

@@ -404,61 +404,104 @@ header p {
 /* Mobile Phones (Portrait) */
 @media (max-width: 600px) {
     .container {
-        width: 95%;
-        padding: 1.5rem 1rem;
-        margin: 10px 0;
+        width: 85%;
+        /* Was 95%, reducing to give side spacing */
+        max-width: 350px;
+        /* Limit max width for smaller feeling */
+        padding: 1.5rem;
+        /* Balanced padding */
+        margin: 20px auto;
+        /* Center with top/bottom margin */
+        border-radius: 15px;
+        /* Softer corners */
     }
 
-    /* Adjust Package Row for very small screens */
+    header {
+        margin-bottom: 1.5rem;
+        /* Less gap */
+    }
+
+    header h1 {
+        font-size: 1.6rem;
+        /* Smaller title */
+    }
+
+    .wifi-icon-img {
+        width: 50px;
+        /* Smaller icon */
+    }
+
+    .voucher-section input {
+        padding: 12px;
+        font-size: 0.95rem;
+        /* Slightly smaller input text */
+    }
+
+    .connect-btn {
+        padding: 12px;
+        font-size: 1rem;
+    }
+
+    /* Adjust Package Row - Inline for Mobile */
     .package-row {
-        grid-template-columns: 1fr auto;
-        grid-template-areas:
-            "name price"
-            "btn btn";
-        gap: 10px;
-        text-align: left;
+        grid-template-columns: 1fr auto auto;
+        /* Name | Price | Button */
+        grid-template-areas: unset;
+        /* Remove stacking */
+        gap: 8px;
+        padding: 10px 0;
+        align-items: center;
     }
 
     .pkg-name {
-        grid-area: name;
-        font-size: 1rem;
+        font-size: 0.85rem;
+        /* Compact text */
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        /* Handle long names */
     }
 
     .pkg-price {
-        grid-area: price;
-        text-align: right;
+        font-size: 0.85rem;
+        font-weight: 600;
     }
 
     .pay-btn-ref {
-        grid-area: btn;
-        width: 100%;
-        /* Full width button on small mobile */
-        padding: 10px;
-        font-size: 1rem;
+        grid-area: unset;
+        width: auto;
+        /* Auto width not full width */
+        padding: 6px 14px;
+        /* Compact button */
+        font-size: 0.8rem;
+        margin-top: 0;
     }
 
     /* Modal Adjustments */
     .modal-content {
-        width: 95%;
+        width: 85%;
+        max-width: 320px;
         padding: 1.5rem;
+        border-radius: 15px;
+    }
+
+    .modal-content h2 {
+        font-size: 1.3rem;
     }
 
     .modal-actions {
-        flex-direction: column;
+        flex-direction: row;
+        /* Keep inline */
+        gap: 10px;
     }
 
     .modal-actions .btn {
-        width: 100%;
-        margin-bottom: 10px;
-    }
-
-    header h1 {
-        font-size: 1.8rem;
-    }
-
-    .wifi-icon-img {
-        width: 60px;
-        /* Slightly smaller on mobile */
+        flex: 1;
+        /* Split space */
+        width: auto;
+        margin-bottom: 0;
+        padding: 10px;
+        font-size: 0.9rem;
     }
 }
 

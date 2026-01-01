@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require('../config/db');
 const sessionStore = require('../config/session');
 const { sendSMS } = require('../utils/sms');
-const { sendPaymentNotification, sendSMSPurchaseNotification, sendWithdrawalNotification } = require('../utils/email');
+const { sendPaymentNotification, sendSMSPurchaseNotification, sendWithdrawalOTP, sendWithdrawalNotification } = require('../utils/email');
 const { authenticateToken } = require('../middleware/auth');
 require('dotenv').config();
 
@@ -158,15 +158,26 @@ router.post('/webhook', async (req, res) => {
             // Mark as Success and Apply Calculated Fee (0 or 5%)
             await db.query('UPDATE transactions SET status = "success", fee = ? WHERE transaction_ref = ?', [feeMs, reference]);
 
+            // Notify Payments Update
+            req.io.emit('data_update', { type: 'payments' });
+
             // Assign Voucher Logic
             const [packages] = await db.query('SELECT * FROM packages WHERE id = ?', [tx.package_id]);
             if (packages.length > 0) {
-                const [availableVouchers] = await db.query('SELECT * FROM vouchers WHERE package_id = ? AND is_used = FALSE LIMIT 1', [tx.package_id]);
                 if (availableVouchers.length > 0) {
                     const voucher = availableVouchers[0];
                     await db.query('UPDATE vouchers SET is_used = TRUE WHERE id = ?', [voucher.id]);
+
+                    // Store voucher code in transactions
+                    await db.query('UPDATE transactions SET voucher_code = ? WHERE transaction_ref = ?', [voucher.code, reference]);
+
+                    req.io.emit('data_update', { type: 'vouchers' }); // Notify Vouchers Update
+                    req.io.emit('data_update', { type: 'payments' });
+
                     const msg = `Payment Received! Your voucher code: ${voucher.code}. Valid for ${packages[0].validity_hours} hrs.`;
                     sendSMS(tx.phone_number, msg, packages[0].admin_id);
+                    req.io.emit('data_update', { type: 'sms' });
+
                     console.log(`[WEBHOOK] Voucher sent for ${reference}`);
 
                     // Email Notification
@@ -206,7 +217,9 @@ router.post('/check-payment-status', async (req, res) => {
 
         const tx = txs[0];
         // If DB already says success (e.g. from webhook), return immediately
-        if (tx.status === 'success') return res.json({ status: 'SUCCESS' });
+        if (tx.status === 'success') {
+            return res.json({ status: 'SUCCESS', voucher_code: tx.voucher_code });
+        }
         if (tx.status === 'failed') return res.json({ status: 'FAILED' });
 
         // Otherwise, ask Gateway
@@ -264,6 +277,10 @@ router.post('/check-payment-status', async (req, res) => {
                 if (availableVouchers.length > 0) {
                     const voucher = availableVouchers[0];
                     await db.query('UPDATE vouchers SET is_used = TRUE WHERE id = ?', [voucher.id]);
+
+                    // Store in Transactions
+                    await db.query('UPDATE transactions SET voucher_code = ? WHERE transaction_ref = ?', [voucher.code, transaction_ref]);
+
                     const msg = `Payment Received! Your voucher code: ${voucher.code}. Valid for ${packages[0].validity_hours} hrs.`;
                     sendSMS(tx.phone_number, msg, packages[0].admin_id);
 
@@ -276,9 +293,11 @@ router.post('/check-payment-status', async (req, res) => {
                             sendPaymentNotification(adminRows[0].email, tx.amount, tx.phone_number, transaction_ref, voucher.code, balance, adminRows[0].username);
                         }
                     } catch (emailErr) { console.error('Email Error:', emailErr); }
+
+                    return res.json({ status: 'SUCCESS', voucher_code: voucher.code });
                 }
             }
-            return res.json({ status: 'SUCCESS' });
+            return res.json({ status: 'SUCCESS' }); // Success but maybe no voucher available?
         } else if (status === 'FAILED') {
             await db.query('UPDATE transactions SET status = "failed" WHERE transaction_ref = ?', [transaction_ref]);
             return res.json({ status: 'FAILED' });
@@ -291,17 +310,67 @@ router.post('/check-payment-status', async (req, res) => {
     }
 });
 
-// Admin Withdraw
-router.post('/admin/withdraw', authenticateToken, async (req, res) => {
-    const { amount, phone_number, description } = req.body;
-
+// Initiate Withdrawal (OTP)
+router.post('/admin/withdraw/initiate', authenticateToken, async (req, res) => {
+    const { amount, phone_number } = req.body;
     if (!amount || !phone_number) return res.status(400).json({ error: 'Required fields missing' });
 
-    let formattedPhone = phone_number.trim();
-    if (formattedPhone.startsWith('0')) formattedPhone = '+256' + formattedPhone.slice(1);
-    else if (!formattedPhone.startsWith('+')) formattedPhone = '+' + formattedPhone;
+    try {
+        // 1. Check Balance
+        const [transStats] = await db.query("SELECT COALESCE(SUM(amount - fee), 0) as total_revenue FROM transactions WHERE status = 'success' AND admin_id = ?", [req.user.id]);
+        const [withdrawStats] = await db.query("SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals WHERE admin_id = ?", [req.user.id]);
+        const currentBalance = Number(transStats[0].total_revenue) - Number(withdrawStats[0].total_withdrawn);
+
+        if (Number(amount) > currentBalance) {
+            return res.status(400).json({ error: 'Insufficient funds', message: `Balance: ${currentBalance}` });
+        }
+
+        // 2. Generate OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiry = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
+
+        // 3. Save to DB
+        await db.query('UPDATE admins SET withdrawal_otp = ?, withdrawal_otp_expiry = ? WHERE id = ?', [otp, expiry, req.user.id]);
+
+        // 4. Send Email
+        const [adminRows] = await db.query('SELECT email, username FROM admins WHERE id = ?', [req.user.id]);
+        if (adminRows.length > 0 && adminRows[0].email) {
+            sendWithdrawalOTP(adminRows[0].email, otp, adminRows[0].username);
+        }
+
+        res.json({ message: 'OTP sent to email', step: 'otp' });
+
+    } catch (err) {
+        console.error('Initiate Withdraw Error:', err);
+        res.status(500).json({ error: 'Failed to initiate withdrawal' });
+    }
+});
+
+// Admin Withdraw (Confirm)
+router.post('/admin/withdraw', authenticateToken, async (req, res) => {
+    const { amount, phone_number, description, otp } = req.body;
+
+    if (!amount || !phone_number || !otp) return res.status(400).json({ error: 'Required fields missing including OTP' });
 
     try {
+        // 1. Verify OTP
+        const [rows] = await db.query('SELECT withdrawal_otp, withdrawal_otp_expiry FROM admins WHERE id = ?', [req.user.id]);
+        if (rows.length === 0) return res.status(401).json({ error: 'Unauthorized' });
+
+        const { withdrawal_otp, withdrawal_otp_expiry } = rows[0];
+
+        if (!withdrawal_otp || withdrawal_otp !== otp) {
+            return res.status(400).json({ error: 'Invalid OTP' });
+        }
+        if (new Date() > new Date(withdrawal_otp_expiry)) {
+            return res.status(400).json({ error: 'OTP Expired' });
+        }
+
+        // 2. Format Phone & Check Balance (Again, for safety)
+        let formattedPhone = phone_number.trim();
+        if (formattedPhone.startsWith('0')) formattedPhone = '+256' + formattedPhone.slice(1);
+        else if (!formattedPhone.startsWith('+')) formattedPhone = '+' + formattedPhone;
+
         const [transStats] = await db.query("SELECT COALESCE(SUM(amount - fee), 0) as total_revenue FROM transactions WHERE status = 'success' AND admin_id = ?", [req.user.id]);
         const [withdrawStats] = await db.query("SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals WHERE admin_id = ?", [req.user.id]);
 
@@ -311,6 +380,7 @@ router.post('/admin/withdraw', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Insufficient funds', message: `Balance: ${currentBalance}` });
         }
 
+        // 3. Process Payment
         const reference = `W-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
         const payload = {
             account_no: RELWORX_ACCOUNT_NO,
@@ -334,6 +404,10 @@ router.post('/admin/withdraw', authenticateToken, async (req, res) => {
         const result = await response.json();
 
         if (response.ok && (result.success === true || result.status === 'success')) {
+            // 4. Clear OTP
+            await db.query('UPDATE admins SET withdrawal_otp = NULL, withdrawal_otp_expiry = NULL WHERE id = ?', [req.user.id]);
+
+            // 5. Record Withdrawal
             await db.query(
                 'INSERT INTO withdrawals (phone_number, amount, reference, description, admin_id) VALUES (?, ?, ?, ?, ?)',
                 [formattedPhone, amount, reference, description, req.user.id]
@@ -341,14 +415,15 @@ router.post('/admin/withdraw', authenticateToken, async (req, res) => {
 
             // Email Notification
             try {
-                // Determine balance AFTER this withdrawal? Or before? Usually user wants to see remaining.
-                // The DB queries above updated the withdrawals table, so getBalance SHOULD reflect the deduction.
                 const balance = await getAdminBalance(req.user.id);
                 const [adminRows] = await db.query('SELECT email, username FROM admins WHERE id = ?', [req.user.id]);
                 if (adminRows.length > 0 && adminRows[0].email) {
                     sendWithdrawalNotification(adminRows[0].email, amount, formattedPhone, reference, description || 'Admin Withdrawal', balance, adminRows[0].username);
                 }
             } catch (wdEmailErr) { console.error('Withdraw Email Error', wdEmailErr); }
+
+            // Emit Real-time Update
+            req.io.emit('data_update', { type: 'withdrawals' }); // Use checking logic on client
 
             res.json({ success: true, data: result });
         } else {
@@ -357,6 +432,42 @@ router.post('/admin/withdraw', authenticateToken, async (req, res) => {
         }
     } catch (err) {
         console.error('Withdraw Error:', err);
+        res.status(500).json({ error: 'Server Error' });
+    }
+});
+
+router.get('/admin/my-transactions', authenticateToken, async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                created_at, 
+                'Withdrawal' as type, 
+                amount, 
+                'success' as status, 
+                reference, 
+                description 
+            FROM withdrawals 
+            WHERE admin_id = ?
+            
+            UNION ALL
+            
+            SELECT 
+                created_at, 
+                'Subscription' as type, 
+                amount, 
+                status, 
+                reference, 
+                CONCAT('Subscription for ', months, ' months') as description 
+            FROM admin_subscriptions 
+            WHERE admin_id = ?
+            
+            ORDER BY created_at DESC
+        `;
+
+        const [rows] = await db.query(query, [req.user.id, req.user.id]);
+        res.json(rows);
+    } catch (err) {
+        console.error('My Transactions Error:', err);
         res.status(500).json({ error: 'Server Error' });
     }
 });

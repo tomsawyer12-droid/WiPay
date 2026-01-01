@@ -1,5 +1,4 @@
 const mysql = require('mysql2/promise');
-const bcrypt = require('bcryptjs');
 require('dotenv').config();
 
 const dbConfig = {
@@ -15,11 +14,14 @@ const dbConfig = {
         conn = await mysql.createConnection(dbConfig);
         console.log('Connected to DB...');
 
-        const hashedPassword = await bcrypt.hash('password123', 10);
-
-        await conn.query('UPDATE admins SET password = ? WHERE username = ?', [hashedPassword, 'pike']);
-        console.log('Password updated for pike to password123');
-
+        const [rows] = await conn.query('SELECT id, username, email FROM admins WHERE id = 23');
+        if (rows.length === 0) {
+            console.log('Admin ID 23 not found.');
+        } else {
+            console.log('Found admin (Before):', rows[0]);
+            await conn.query('UPDATE admins SET email = ? WHERE id = 23', ['ataho955@gmail.com']);
+            console.log('Updated email for Admin 23 (pike) to ataho955@gmail.com');
+        }
     } catch (e) {
         console.error('Error:', e);
     } finally {

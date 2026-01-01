@@ -116,4 +116,33 @@ async function sendWithdrawalNotification(toEmail, amount, phone, ref, descripti
     }
 }
 
-module.exports = { sendPaymentNotification, sendSMSPurchaseNotification, sendWithdrawalNotification };
+async function sendWithdrawalOTP(toEmail, otp, username) {
+    if (!toEmail) return;
+
+    const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: toEmail,
+        subject: `Start Withdrawal: ${otp}`,
+        html: `
+            <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+                <h2 style="color: #ff9800;">Withdrawal Verification</h2>
+                <p>Hello ${username || 'Admin'},</p>
+                <p>Use the One-Time Password (OTP) below to complete your withdrawal request.</p>
+                <div style="font-size: 24px; font-weight: bold; letter-spacing: 5px; color: #333; margin: 20px 0; padding: 10px; background: #eee; text-align: center; border-radius: 4px;">
+                    ${otp}
+                </div>
+                <p style="color: #555;">This code expires in 5 minutes.</p>
+                <p style="margin-top: 20px; color: #777; font-size: 12px;">If you did not request this, please contact support immediately.</p>
+            </div>
+        `
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        console.log(`[EMAIL] OTP Sent to ${toEmail}`);
+    } catch (err) {
+        console.error('[EMAIL] Failed to send OTP:', err.message);
+    }
+}
+
+module.exports = { sendPaymentNotification, sendSMSPurchaseNotification, sendWithdrawalNotification, sendWithdrawalOTP };

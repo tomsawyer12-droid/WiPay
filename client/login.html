@@ -4,105 +4,386 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WIPAY Login</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link rel="stylesheet" href="css/login.css">
+    <title>Garuga Spot</title>
+    <link rel="icon" type="image/png" href="img/favicon.png">
+    <link rel="stylesheet" href="css/style.css">
 </head>
 
 <body>
+    <div class="container">
+        <header>
+            <img src="img/Wifi-Icon.png" alt="Wi-Fi" class="wifi-icon-img">
+            <h1>Garuga Spot</h1>
+            <p>Stay online, Stay informed</p>
+        </header>
 
-    <div id="loginError" class="login-error"></div>
-
-    <div class="login-container">
-        <!-- Avatar / Logo -->
-        <div class="avatar">
-            <img src="img/favicon.png" alt="WiPay Logo">
+        <!-- Top Section: Free Trial & Voucher -->
+        <div class="section-card free-trial">
+            <span>Free trial available</span>
+            <button class="trial-btn">click here</button>
         </div>
 
-        <!-- Login Form -->
-        <form id="loginForm" onsubmit="handleLogin(event)">
-            <div class="input-group">
-                <i class="fas fa-user"></i>
-                <input type="text" id="username" placeholder="Enter Username" required>
+        <div class="section-card voucher-section">
+            <input type="text" id="voucherCode" placeholder="Enter voucher / Teekamu koodi">
+        </div>
+
+        <button id="voucherRedeemBtn" class="connect-btn">Connect</button>
+
+        <!-- Payment Methods -->
+        <div class="payment-methods">
+            <p>We Accept</p>
+            <div class="method-logos">
+                <span class="method-badge airtel">Airtel Money</span>
+                <span class="method-badge mtn">MTN MoMo</span>
             </div>
+        </div>
+
+        <!-- Packages Grid -->
+        <div id="packages-container" class="packages-grid">
+            <div class="loading">Loading packages...</div>
+        </div>
+        <div id="no-admin-msg" class="hidden" style="text-align:center; padding: 20px; color: #666;">
+            <p>Packages are Currently Unavailable, Please Contact the Admin for more information.</p>
+        </div>
+
+        <!-- Info Footer -->
+        <div class="info-footer">
+            <strong>FOR INQUIRIES</strong>
+            WhatsApp or call 0757136062<br>
+
+        </div>
+
+        <!-- Messages -->
+        <div id="statusMessage" class="status-message hidden"></div>
+    </div>
+
+    <!-- Payment Modal -->
+    <div id="paymentModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <button id="closeModalBtn" class="close-modal-btn">&times;</button>
+            <h2>Confirm Purchase</h2>
+            <p id="modalPackageName">Package Name</p>
 
             <div class="input-group">
-                <i class="fas fa-lock"></i>
-                <input type="password" id="password" placeholder="Password" required>
+                <input type="tel" id="modalPhoneNumber" placeholder="Enter Phone Number (e.g., 07XX...)"
+                    pattern="[0-9]*">
             </div>
 
-            <div class="actions">
-                <label class="remember-me">
-                    <input type="checkbox"> Remember me
-                </label>
-                <a href="#" class="forgot-pass" onclick="alert('Please contact support to reset password.')">Forgot
-                    Password?</a>
+            <div class="modal-actions">
+                <button id="modalPayBtn" class="btn primary-btn"
+                    style="background: var(--primary-green); border: none; padding: 12px; color: white;">Pay
+                    Now</button>
+                <button id="modalCancelBtn" class="btn secondary-btn"
+                    style="color: #aaa; text-decoration: none;">Cancel</button>
             </div>
-
-            <button type="submit" class="login-btn">Login</button>
-        </form>
+        </div>
     </div>
 
     <script src="js/config.js"></script>
     <script>
-        function showError(msg) {
-            const errorDiv = document.getElementById('loginError');
-            const btn = document.querySelector('.login-btn');
+        document.addEventListener('DOMContentLoaded', () => {
+            const packagesContainer = document.getElementById('packages-container');
+            const statusMessage = document.getElementById('statusMessage');
 
-            errorDiv.textContent = msg;
-            errorDiv.style.display = 'block';
-            btn.textContent = 'Login';
+            // Check for MikroTik Error (e.g. "invalid password")
+            const mtError = '$(error)';
+            if (mtError && mtError !== '$' + '(error)') {
+                showMessage(mtError, 'error');
+            }
 
-            // Auto hide after 3 seconds
-            setTimeout(() => {
-                errorDiv.style.display = 'none';
-            }, 3000);
-        }
+            // Voucher Elements
+            const voucherCodeInput = document.getElementById('voucherCode');
+            const voucherRedeemBtn = document.getElementById('voucherRedeemBtn');
 
-        function handleLogin(e) {
-            e.preventDefault();
-            const user = document.getElementById('username').value;
-            const pass = document.getElementById('password').value;
-            const btn = document.querySelector('.login-btn');
+            // Modal Elements
+            const paymentModal = document.getElementById('paymentModal');
+            const closeModalBtn = document.getElementById('closeModalBtn');
+            const modalPayBtn = document.getElementById('modalPayBtn');
+            const modalCancelBtn = document.getElementById('modalCancelBtn');
+            const modalPackageName = document.getElementById('modalPackageName');
+            const modalPrice = document.getElementById('modalPrice');
 
-            // Reset UI
-            document.getElementById('loginError').style.display = 'none';
-            btn.textContent = 'Logging in...';
+            // --- CONFIGURATION FOR ROUTER DEPLOYMENT ---
+            // Change this value to the Admin ID (e.g., 1 or 2) when installing on a specific router.
+            // If null, it will try to read from the URL (?admin=1).
+            const ROUTER_ADMIN_ID = 23;
 
-            // Real Authentication
-            fetch(`${CONFIG.API_BASE_URL}/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: user, password: pass })
-            })
+            let selectedPackageId = null;
+            let selectedPackagePrice = 0;
+
+            // Fetch Packages
+            // Priority: 1. Hardcoded ID (Router) -> 2. URL Param (Shared Link)
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlAdminId = urlParams.get('admin');
+            const targetAdminId = ROUTER_ADMIN_ID || urlAdminId;
+
+            let fetchUrl = `${CONFIG.API_BASE_URL}/packages`;
+            if (targetAdminId) fetchUrl += `?admin_id=${targetAdminId}`;
+
+            fetch(fetchUrl)
                 .then(res => res.json())
-                .then(data => {
-                    if (data.token) {
-                        // Success
-                        btn.textContent = 'Success!';
-                        btn.style.background = '#2ecc71';
+                .then(packages => {
+                    // ... (no change)
+                    const packagesContainer = document.getElementById('packages-container');
+                    packagesContainer.innerHTML = '';
 
-                        // Store Token
-                        localStorage.setItem('wipay_token', data.token);
-                        localStorage.setItem('wipay_user', data.username);
-
-                        setTimeout(() => {
-                            if (data.role === 'super_admin') {
-                                window.location.href = 'super_dashboard.html';
-                            } else {
-                                window.location.href = 'dashboard.html';
-                            }
-                        }, 800);
-                    } else {
-                        // Fail
-                        showError(data.error || 'Invalid username or password');
+                    if (packages.length === 0) {
+                        document.getElementById('no-admin-msg').classList.remove('hidden');
+                        packagesContainer.style.display = 'none';
+                        return;
                     }
+
+                    packages.forEach(pkg => {
+                        const row = document.createElement('div');
+                        row.className = 'package-row';
+
+                        // Reference Layout: Name - Price - Button
+                        row.innerHTML = `
+                            <div class="pkg-name">${pkg.name}</div>
+                            <div class="pkg-price">${Number(pkg.price).toLocaleString()}/=</div>
+                            <button class="pay-btn-ref" onclick="initiatePay('${pkg.id}', '${pkg.name}', ${pkg.price})">PAY</button>
+                        `;
+
+                        if (packagesContainer) packagesContainer.appendChild(row);
+                    });
                 })
                 .catch(err => {
-                    console.error(err);
-                    showError('Connection Error. Please try again.');
+                    const packagesContainer = document.getElementById('packages-container');
+                    if (packagesContainer) packagesContainer.innerHTML = '<div class="error" style="color:red">Failed to load packages.</div>';
                 });
-        }
+
+            // ... (no change in global functions)
+            // Free Trial Logic
+            const trialBtn = document.querySelector('.trial-btn');
+            if (trialBtn) {
+                trialBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    // MikroTik Trial Login URL
+                    // Usually: $(link-login-only)?dst=$(link-orig-esc)&username=T-$(mac-esc)
+                    // Or simpler: submit form with no user/pass? No, usually specific link.
+                    // We will try the standard "login by link" method for trial.
+                    window.location.href = '$(link-login-only)?dst=$(link-orig-esc)&username=T-$(mac-esc)';
+                });
+            }
+
+            // Global function to be called from HTML onclick
+            window.initiatePay = function (id, name, price) {
+                selectedPackageId = id;
+                selectedPackagePrice = price;
+                modalPackageName.textContent = `${name} - ${Number(price).toLocaleString()} /=`;
+                modalPayBtn.textContent = `Pay ${Number(price).toLocaleString()} /= \n(Mobile Money)`;
+                paymentModal.classList.remove('hidden');
+                modalPhoneNumber.focus();
+            };
+
+            // Voucher Logic (MikroTik Login)
+            voucherRedeemBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const code = voucherCodeInput.value.trim();
+                if (!code) {
+                    showMessage('Please enter a voucher code', 'error');
+                    return;
+                }
+
+                // SUBMIT TO MIKROTIK (Standard POST)
+                const routerLoginUrl = '$(link-login-only)';
+
+                // Dynamic Fallback: Use current hostname (Gateway IP) if variable not replaced
+                let finalAction = routerLoginUrl;
+                if (routerLoginUrl.startsWith('$')) {
+                    // We are likely testing or variable didn't replace. Use current origin + /login
+                    finalAction = window.location.protocol + '//' + window.location.host + '/login';
+                }
+
+                console.log('Target Login URL:', finalAction);
+
+                voucherRedeemBtn.textContent = 'Connecting to ' + new URL(finalAction).host + '...';
+                voucherRedeemBtn.disabled = true;
+
+                try {
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = finalAction;
+
+                    const userField = document.createElement('input');
+                    userField.type = 'hidden';
+                    userField.name = 'username';
+                    userField.value = code;
+                    form.appendChild(userField);
+
+                    const passField = document.createElement('input');
+                    passField.type = 'hidden';
+                    passField.name = 'password';
+                    passField.value = code;
+                    form.appendChild(passField);
+
+                    const dstField = document.createElement('input');
+                    dstField.type = 'hidden';
+                    dstField.name = 'dst';
+                    dstField.value = '$(link-orig)';
+                    form.appendChild(dstField);
+
+                    document.body.appendChild(form);
+                    form.submit();
+
+                } catch (err) {
+                    console.error('Login Form Error:', err);
+                    showMessage('Login Error: ' + err.message, 'error');
+                    voucherRedeemBtn.disabled = false;
+                    voucherRedeemBtn.textContent = 'Connect';
+                }
+            });
+
+
+            // Modal Logic
+            function closeModal() {
+                paymentModal.classList.add('hidden');
+                modalPayBtn.disabled = false;
+                modalPayBtn.textContent = 'Pay Now';
+                modalPhoneNumber.value = '';
+            }
+
+            closeModalBtn.addEventListener('click', closeModal);
+            modalCancelBtn.addEventListener('click', closeModal);
+
+            // Close on click outside
+            window.addEventListener('click', (e) => {
+                if (e.target === paymentModal) {
+                    closeModal();
+                }
+            });
+
+            // Pay Button Logic
+            modalPayBtn.addEventListener('click', async () => {
+                const phoneNumber = modalPhoneNumber.value.trim();
+                if (!phoneNumber) {
+                    showMessage('Please enter your phone number.', 'error');
+                    return;
+                }
+
+                modalPayBtn.disabled = true;
+                modalPayBtn.textContent = 'Processing...';
+
+                try {
+                    const purchaseRes = await fetch(`${CONFIG.API_BASE_URL}/purchase`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone_number: phoneNumber, package_id: selectedPackageId })
+                    });
+                    const purchaseData = await purchaseRes.json();
+
+                    if (purchaseData.transaction_id) {
+                        closeModal();
+                        showMessage(purchaseData.message, 'success');
+
+                        // Start Polling with Progress Bar
+                        startPolling(purchaseData.transaction_id, phoneNumber, selectedPackageId);
+                    } else {
+                        showMessage(purchaseData.error || 'Purchase failed', 'error');
+                        modalPayBtn.disabled = false;
+                        modalPayBtn.textContent = `Pay ${Number(selectedPackagePrice).toLocaleString()} /=`;
+                    }
+                } catch (err) {
+                    showMessage('Network error. Please try again.', 'error');
+                    modalPayBtn.disabled = false;
+                }
+            });
+
+
+            function startPolling(txRef, phone, pkgId) {
+                showProgress('Waiting for payment confirmation...');
+
+                let checkCount = 0;
+                const maxChecks = 60; // 5 mins total
+
+                const intervalId = setInterval(async () => {
+                    checkCount++;
+                    if (checkCount > maxChecks) {
+                        clearInterval(intervalId);
+                        hideProgress();
+                        showMessage('Payment timed out. Please check SMS.', 'error');
+                        return;
+                    }
+
+                    try {
+                        const res = await fetch(`${CONFIG.API_BASE_URL}/check-payment-status`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ transaction_ref: txRef })
+                        });
+                        const data = await res.json();
+
+                        if (data.status === 'SUCCESS') {
+                            clearInterval(intervalId);
+                            hideProgress();
+
+                            // Auto Login Logic
+                            if (data.voucher_code) {
+                                showMessage('Payment Successful! Auto-connecting...', 'success');
+                                document.getElementById('voucherCode').value = data.voucher_code;
+                                setTimeout(() => {
+                                    document.getElementById('voucherRedeemBtn').click();
+                                }, 1500); // Small delay to let user see success
+                            } else {
+                                showMessage('Payment Confirmed! Voucher sent via SMS.', 'success');
+                            }
+
+                            // Optional: Automatically connect?
+                            // checkConnection(phone);
+                        }
+                    } catch (e) {
+                        console.error('Polling error', e);
+                    }
+                }, 5000);
+            }
+
+            // --- UX Helpers ---
+
+            function showMessage(msg, type) {
+                // Remove existing
+                const existing = document.querySelectorAll('.popup-toast');
+                existing.forEach(el => el.remove());
+
+                const toast = document.createElement('div');
+                toast.className = `popup-toast ${type}`;
+                toast.innerHTML = type === 'success' ? `✅ ${msg}` : (type === 'error' ? `❌ ${msg}` : `ℹ️ ${msg}`);
+
+                document.body.appendChild(toast);
+
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    toast.style.top = '-100px';
+                    setTimeout(() => toast.remove(), 500);
+                }, 5000);
+            }
+
+            function showProgress(text) {
+                let overlay = document.getElementById('progressOverlay');
+                if (!overlay) {
+                    overlay = document.createElement('div');
+                    overlay.id = 'progressOverlay';
+                    overlay.className = 'payment-progress-overlay';
+                    overlay.innerHTML = `
+                        <div class="progress-container">
+                            <div class="progress-text" id="progressText">${text}</div>
+                            <div class="progress-bar-track">
+                                <div class="progress-bar-fill indeterminate"></div>
+                            </div>
+                            <div style="margin-top:15px; color:#aaa; font-size:0.9rem;">Please approve the prompt on your phone</div>
+                        </div>
+                    `;
+                    document.body.appendChild(overlay);
+                } else {
+                    document.getElementById('progressText').textContent = text;
+                    overlay.classList.remove('hidden');
+                }
+            }
+
+            function hideProgress() {
+                const overlay = document.getElementById('progressOverlay');
+                if (overlay) overlay.classList.add('hidden');
+            }
+        });
     </script>
 </body>
 

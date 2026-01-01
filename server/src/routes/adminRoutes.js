@@ -21,6 +21,7 @@ router.post('/admin/categories', async (req, res) => {
 
     try {
         const [result] = await db.query('INSERT INTO categories (name, admin_id) VALUES (?, ?)', [name, req.user.id]);
+        req.io.emit('data_update', { type: 'categories' });
         res.json({ id: result.insertId, name, message: 'Category created' });
     } catch (err) {
         console.error('Create Category Error:', err);
@@ -68,6 +69,9 @@ router.delete('/admin/categories/:id', async (req, res) => {
         await connection.query('DELETE FROM categories WHERE id = ?', [categoryId]);
 
         await connection.commit();
+        req.io.emit('data_update', { type: 'categories' });
+        req.io.emit('data_update', { type: 'packages' }); // Cascaded
+        req.io.emit('data_update', { type: 'vouchers' }); // Cascaded
         res.json({ message: 'Category and all related data deleted successfully' });
 
     } catch (err) {
@@ -92,6 +96,7 @@ router.post('/admin/packages', async (req, res) => {
             INSERT INTO packages (category_id, name, price, validity_hours, data_limit_mb, created_at, admin_id)
             VALUES (?, ?, ?, ?, ?, NOW(), ?)
         `, [category_id, name, price, validity_hours || 0, data_limit_mb || 0, req.user.id]);
+        req.io.emit('data_update', { type: 'packages' });
         res.json({ message: 'Package created successfully' });
     } catch (err) {
         console.error('Create Package Error:', err);
@@ -188,6 +193,7 @@ router.post('/admin/vouchers/import', upload.single('file'), async (req, res) =>
                 }
                 // Cleanup file
                 fs.unlink(req.file.path, (err) => { if (err) console.error('Cleanup Error:', err); });
+                req.io.emit('data_update', { type: 'vouchers' });
                 res.json({ message: `Import complete. Processed ${totalInserted} vouchers.` });
             })
             .on('error', (err) => {
@@ -423,6 +429,8 @@ router.post('/admin/sell-voucher', async (req, res) => {
         }
 
         await connection.commit();
+        req.io.emit('data_update', { type: 'vouchers' });
+        req.io.emit('data_update', { type: 'sms' });
         res.json({ message: 'Voucher sold and sent via SMS', voucher: voucher.code });
 
     } catch (err) {
@@ -443,6 +451,7 @@ router.delete('/admin/vouchers', async (req, res) => {
     try {
         const placeholders = ids.map(() => '?').join(',');
         await db.query(`DELETE FROM vouchers WHERE id IN (${placeholders}) AND admin_id = ?`, [...ids, req.user.id]);
+        req.io.emit('data_update', { type: 'vouchers' });
         res.json({ message: `Deleted ${ids.length} vouchers` });
     } catch (err) {
         console.error('Delete Vouchers Error:', err);

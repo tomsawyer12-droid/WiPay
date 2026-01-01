@@ -116,28 +116,7 @@ body {
     border-bottom: 1px solid var(--border-color);
 }
 
-.search-box {
-    padding: 16px;
-    border-bottom: 1px solid var(--border-color);
-}
 
-.search-box input {
-    width: 100%;
-    background: var(--input-bg);
-    border: 1px solid var(--border-color);
-    padding: 10px 12px;
-    color: var(--text-main);
-    border-radius: 8px;
-    font-size: 0.9rem;
-    outline: none;
-    transition: border-color 0.2s;
-    box-sizing: border-box;
-    /* Fix: Search bar width issue */
-}
-
-.search-box input:focus {
-    border-color: var(--primary-color);
-}
 
 .nav-section {
     padding: 24px 24px 8px;
@@ -417,6 +396,11 @@ body {
     letter-spacing: -0.02em;
     text-align: center;
     /* Centered Title */
+}
+
+/* Only white text in dark mode modals */
+body.dark-mode .dashboard-modal-content p {
+    color: #ffffff !important;
 }
 
 /* Note: Keeping generic .hidden support for JS toggling */
@@ -924,4 +908,44 @@ button {
         padding: 12px 24px;
         font-size: 1rem;
     }
+}
+
+/* --- Shimmer Loading Effect --- */
+@keyframes shimmer {
+    0% {
+        background-position: -1000px 0;
+    }
+
+    100% {
+        background-position: 1000px 0;
+    }
+}
+
+.shimmer-row td {
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.shimmer-line {
+    height: 16px;
+    width: 100%;
+    background: #f6f7f8;
+    background-image: linear-gradient(to right, #f6f7f8 0%, #edeef1 20%, #f6f7f8 40%, #f6f7f8 100%);
+    background-repeat: no-repeat;
+    background-size: 1000px 100%;
+    display: inline-block;
+    position: relative;
+    border-radius: 4px;
+    animation-duration: 1.5s;
+    animation-fill-mode: forwards;
+    animation-iteration-count: infinite;
+    animation-name: shimmer;
+    animation-timing-function: linear;
+}
+
+/* Dark Mode Shimmer */
+body.dark-mode .shimmer-line {
+    background: #374151;
+    /* Darker base */
+    background-image: linear-gradient(to right, #374151 0%, #4b5563 20%, #374151 40%, #374151 100%);
 }
