@@ -1,10 +1,10 @@
-# WiPay Codebase Master Guide
+# UGPAY Codebase Master Guide
 
-This document explains **how WiPay works from scratch**. It is designed to help you verify, debug, and extend every part of the system.
+This document explains **how UGPAY works from scratch**. It is designed to help you verify, debug, and extend every part of the system.
 
 ## 1. High-Level Architecture
 
-WiPay is a **Client-Server Application**.
+UGPAY is a **Client-Server Application**.
 
 *   **Frontend (Client)**: Built with **Vanilla HTML/CSS/JS**. No complex frameworks (like React/Vue). It runs in the user's browser.
     *   *Role*: Displays the UI, handles clicks, and calls the Server API.

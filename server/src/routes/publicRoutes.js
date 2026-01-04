@@ -3,6 +3,30 @@ const router = express.Router();
 const db = require('../config/db');
 const sessionStore = require('../config/session');
 
+
+// Get Branding Info (Public)
+router.get('/branding', async (req, res) => {
+    const { admin_id } = req.query;
+
+    if (!admin_id) return res.json({ name: 'UGPAY', phone: '' });
+
+    try {
+        const [rows] = await db.query('SELECT business_name, business_phone FROM admins WHERE id = ?', [admin_id]);
+
+        if (rows.length === 0) {
+            return res.json({ name: 'UGPAY', phone: '' });
+        }
+
+        res.json({
+            name: rows[0].business_name || 'UGPAY',
+            phone: rows[0].business_phone || ''
+        });
+    } catch (err) {
+        console.error('Database error:', err);
+        res.status(500).json({ error: 'Failed to fetch branding' });
+    }
+});
+
 // Get Packages (Public/Captive Portal)
 router.get('/packages', async (req, res) => {
     const { admin_id } = req.query;
@@ -16,6 +40,7 @@ router.get('/packages', async (req, res) => {
             JOIN vouchers v ON p.id = v.package_id AND v.is_used = 0
             JOIN admins a ON p.admin_id = a.id
             WHERE p.admin_id = ?
+            AND p.is_active = 1
             AND (a.billing_type != 'subscription' OR a.subscription_expiry > NOW() OR a.subscription_expiry IS NULL)
             GROUP BY p.id, p.name, p.price, p.validity_hours
             HAVING COUNT(v.id) > 0

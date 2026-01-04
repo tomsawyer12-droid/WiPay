@@ -4,15 +4,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WIPAY - Super Admin</title>
+    <title>UGPAY - Super Admin</title>
     <link rel="icon" type="image/png" href="img/favicon.png">
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="css/dashboard.css">
     <link rel="stylesheet" href="css/super.css">
 </head>
 <script>
     if (!localStorage.getItem('wipay_token')) {
-        window.location.href = 'login.html';
+        window.location.href = 'login_dashboard.html';
     }
 </script>
 
@@ -42,8 +43,8 @@
                     <div class="mobile-menu-btn hidden-desktop" onclick="toggleSidebar(); event.stopPropagation();">
                         ☰
                     </div>
-                    <img src="img/favicon.png" alt="WiPay Logo" class="header-logo">
-                    <span class="brand-name">WiPay Super</span>
+                    <img src="img/favicon.png" alt="UGPAY Logo" class="header-logo">
+                    <span class="brand-name">UGPAY Super</span>
                 </div>
 
                 <div class="header-right">
@@ -102,6 +103,10 @@
                         <div class="stat-value" id="total-commission">0</div>
                         <div class="stat-label">Total Commission (5%)</div>
                     </div>
+                    <div class="stat-card orange">
+                        <div class="stat-value" id="total-subscriptions">0</div>
+                        <div class="stat-label">Total Subscriptions</div>
+                    </div>
                 </div>
             </div>
 
@@ -115,6 +120,10 @@
             <input type="text" id="newTenantUser" placeholder="Username"
                 style="width: 100%; padding: 10px; margin-bottom: 10px;">
             <input type="email" id="newTenantEmail" placeholder="Email Address (Optional)"
+                style="width: 100%; padding: 10px; margin-bottom: 10px;">
+            <input type="text" id="newTenantBusiness" placeholder="Business Name (e.g. Garuga Coffee)"
+                style="width: 100%; padding: 10px; margin-bottom: 10px;">
+            <input type="text" id="newTenantPhone" placeholder="Business Phone (Optional)"
                 style="width: 100%; padding: 10px; margin-bottom: 10px;">
             <input type="password" id="newTenantPass" placeholder="Password"
                 style="width: 100%; padding: 10px; margin-bottom: 10px;">
@@ -267,7 +276,7 @@
 
             if (res.status === 401 || res.status === 403) {
                 localStorage.removeItem('wipay_token');
-                window.location.href = 'login.html';
+                window.location.href = 'login_dashboard.html';
                 return Promise.reject('Unauthorized');
             }
             return res;
@@ -277,7 +286,7 @@
         document.getElementById('logoutLink').onclick = (e) => {
             e.preventDefault();
             localStorage.removeItem('wipay_token');
-            window.location.href = 'login.html';
+            window.location.href = 'login_dashboard.html';
         };
 
         // --- Views ---
@@ -345,24 +354,45 @@
             const password = document.getElementById('newTenantPass').value;
             const billing = document.getElementById('newTenantBilling').value;
             const email = document.getElementById('newTenantEmail').value;
+            const business_name = document.getElementById('newTenantBusiness').value;
+            const business_phone = document.getElementById('newTenantPhone').value;
+
+            // Fix: Prevent Double Click
+            const btn = document.querySelector('#addTenantModal .btn-success');
 
             if (!username || !password) return showAlert('Fill all fields', 'error');
+
+            const originalText = btn.textContent;
+            btn.textContent = 'Processing...';
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
 
             try {
                 const res = await fetchAuth('/api/super/tenants', {
                     method: 'POST',
-                    body: JSON.stringify({ username, password, billing_type: billing, email: email })
+                    body: JSON.stringify({ username, password, billing_type: billing, email, business_name, business_phone })
                 });
 
                 if (res.ok) {
                     showAlert('Tenant Created', 'success');
                     closeModal('addTenantModal');
                     fetchTenants();
+                    // Clear fields
+                    document.getElementById('newTenantUser').value = '';
+                    document.getElementById('newTenantPass').value = '';
+                    document.getElementById('newTenantEmail').value = '';
                 } else {
                     const data = await res.json();
                     showAlert(data.error || 'Failed', 'error');
                 }
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error(e);
+                showAlert('Network Error', 'error');
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }
         }
 
         async function deleteTenant(id) {
@@ -387,6 +417,7 @@
                 document.getElementById('total-vouchers').textContent = data.totalVouchers;
                 document.getElementById('total-revenue').textContent = Number(data.totalRevenue).toLocaleString();
                 document.getElementById('total-commission').textContent = Number(data.totalCommission).toLocaleString();
+                document.getElementById('total-subscriptions').textContent = Number(data.totalSubscriptions || 0).toLocaleString();
             } catch (e) { console.error(e); }
         }
 

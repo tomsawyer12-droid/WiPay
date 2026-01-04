@@ -1,12 +1,24 @@
 const nodemailer = require('nodemailer');
 
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-    }
-});
+const transporter = nodemailer.createTransport(
+    process.env.EMAIL_HOST
+        ? {
+            host: process.env.EMAIL_HOST,
+            port: process.env.EMAIL_PORT,
+            secure: process.env.EMAIL_SECURE === 'true', // true for 465, false for other ports
+            auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS
+            }
+        }
+        : {
+            service: 'gmail',
+            auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS
+            }
+        }
+);
 
 async function sendPaymentNotification(toEmail, amount, phone, ref, voucherCode, balance, username) {
     if (!toEmail) {
@@ -44,7 +56,7 @@ async function sendPaymentNotification(toEmail, amount, phone, ref, voucherCode,
                 <div style="margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #4caf50;">
                     <strong>Current Balance:</strong> ${balance ? Number(balance).toLocaleString() : '0'} UGX
                 </div>
-                <p style="margin-top: 20px; color: #777; font-size: 12px;">WiPay Notification System</p>
+                <p style="margin-top: 20px; color: #777; font-size: 12px;">UGPAY Notification System</p>
             </div>
         `
     };
@@ -145,4 +157,40 @@ async function sendWithdrawalOTP(toEmail, otp, username) {
     }
 }
 
-module.exports = { sendPaymentNotification, sendSMSPurchaseNotification, sendWithdrawalNotification, sendWithdrawalOTP };
+async function sendLowSMSBalanceWarning(toEmail, currentBalance, username) {
+    if (!toEmail) return;
+
+    const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: toEmail,
+        subject: `ACTION REQUIRED: Low SMS Balance (${currentBalance} Credits)`,
+        html: `
+            <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+                <h2 style="color: #e74c3c;">Low SMS Balance Warning</h2>
+                <p>Hello ${username || 'Admin'},</p>
+                <p>Your internal SMS balance has dropped to <strong>${Number(currentBalance).toLocaleString()} Credits</strong>.</p>
+                <p><strong>Threshold:</strong> 1,000 Credits</p>
+                <div style="margin-top: 20px; padding: 15px; background-color: #fdf2f2; border-left: 4px solid #e74c3c; color: #c0392b;">
+                    Please top up your SMS credits immediately to ensure uninterrupted service (especially for Auto-Login).
+                </div>
+                <p style="margin-top: 20px;">Use the Dashboard "Buy SMS" feature to top up instantly.</p>
+                <p style="margin-top: 20px; color: #777; font-size: 12px;">UGPAY Notification System</p>
+            </div>
+        `
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        console.log(`[EMAIL] Low SMS Warning Sent to ${toEmail}`);
+    } catch (err) {
+        console.error('[EMAIL] Failed to send Low SMS Warning:', err.message);
+    }
+}
+
+module.exports = {
+    sendPaymentNotification,
+    sendSMSPurchaseNotification,
+    sendWithdrawalNotification,
+    sendWithdrawalOTP,
+    sendLowSMSBalanceWarning
+};

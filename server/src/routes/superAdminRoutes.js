@@ -21,7 +21,7 @@ router.get('/tenants', async (req, res) => {
 
 // Create New Tenant
 router.post('/tenants', async (req, res) => {
-    const { username, password, email } = req.body;
+    const { username, password, email, business_name, business_phone } = req.body;
 
     if (!username || !password) {
         return res.status(400).json({ error: 'Username and password are required' });
@@ -39,8 +39,11 @@ router.post('/tenants', async (req, res) => {
 
         const billingType = req.body.billing_type || 'commission';
         const userEmail = email || null;
+        const bName = business_name || 'UGPAY';
+        const bPhone = business_phone || null;
 
-        await db.query('INSERT INTO admins (username, password_hash, role, billing_type, email) VALUES (?, ?, ?, ?, ?)', [username, hash, 'admin', billingType, userEmail]);
+        await db.query('INSERT INTO admins (username, password_hash, role, billing_type, email, business_name, business_phone) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [username, hash, 'admin', billingType, userEmail, bName, bPhone]);
 
         res.status(201).json({ message: 'Tenant created successfully' });
     } catch (err) {
@@ -110,12 +113,14 @@ router.get('/stats', async (req, res) => {
         const [vouchers] = await db.query('SELECT COUNT(*) as count FROM vouchers');
         const [totalRevenue] = await db.query('SELECT SUM(amount) as total FROM transactions WHERE status = "SUCCESS"');
         const [totalFees] = await db.query('SELECT SUM(fee) as total FROM transactions WHERE status = "SUCCESS"');
+        const [totalSubscriptions] = await db.query('SELECT SUM(amount) as total FROM admin_subscriptions WHERE status = "success"');
 
         res.json({
             tenantCount: admins[0].count,
             totalVouchers: vouchers[0].count,
             totalRevenue: totalRevenue[0].total || 0,
-            totalCommission: totalFees[0].total || 0
+            totalCommission: totalFees[0].total || 0,
+            totalSubscriptions: totalSubscriptions[0].total || 0
         });
     } catch (err) {
         console.error(err);

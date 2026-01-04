@@ -1,26 +1,12 @@
-// REPLACE '192.168.1.74' with your Computer's Static IP if it changes!
-const SERVER_IP = '192.168.1.74';
-const SERVER_PORT = '5002';
-
-// Logic to determine API URL based on where the page is loaded
-const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const isNgrok = window.location.hostname.includes('ngrok') || window.location.hostname.includes('loca.lt'); // Common tunnels
-const isServerDirect = window.location.port === SERVER_PORT; // Accessed via port 5002
-
+// Production Config
 const CONFIG = {
-    API_BASE_URL: (isLocal || isNgrok || isServerDirect)
-        ? `${window.location.origin}/api`  // Use relative/origin URL (supports HTTPS/ngrok)
-        : `http://${SERVER_IP}:${SERVER_PORT}/api` // Fallback for Router Hotspot (served from 192.168.88.1)
+    // Since we are using Nginx to proxy /api -> localhost:5002
+    // We can just use the relative path. This works for IP, Domain, and anything else.
+    API_BASE_URL: '/api'
 };
 
-// Global Security Helper
-function escapeHtml(text) {
-    if (!text) return text;
-    return text
-        .toString()
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+// DEV OVERRIDE (For when you open the file locally on your laptop)
+if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:') {
+    console.warn("Running in Development Mode");
+    CONFIG.API_BASE_URL = 'http://localhost:5002'; // Or your local server IP
 }

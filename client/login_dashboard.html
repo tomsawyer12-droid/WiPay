@@ -4,10 +4,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WIPAY Login</title>
+    <title>UGPAY Login</title>
     <link rel="icon" type="image/png" href="img/favicon.png">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="css/login.css">
+    <script>
+        // Auto-Redirect if already logged in
+        (function () {
+            const token = localStorage.getItem('wipay_token');
+            const role = localStorage.getItem('wipay_role');
+            if (token) {
+                if (role === 'super_admin') window.location.href = 'super_dashboard.html';
+                else window.location.href = 'dashboard.html';
+            }
+        })();
+    </script>
 </head>
 
 <body>
@@ -17,7 +28,7 @@
     <div class="login-container">
         <!-- Avatar / Logo -->
         <div class="avatar">
-            <img src="img/favicon.png" alt="WiPay Logo">
+            <img src="img/favicon.png" alt="UGPAY Logo">
         </div>
 
         <!-- Login Form -->
@@ -86,6 +97,7 @@
                         // Store Token
                         localStorage.setItem('wipay_token', data.token);
                         localStorage.setItem('wipay_user', data.username);
+                        localStorage.setItem('wipay_role', data.role); // Save Role
 
                         setTimeout(() => {
                             if (data.role === 'super_admin') {

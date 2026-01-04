@@ -11,14 +11,16 @@ The application follows a **Monolithic Client-Server Architecture**.
 ### 1.1 The Frontend (Client)
 *   **Technology**: Vanilla HTML, CSS, JavaScript.
 *   **Location**: `client/` folder.
+*   **Deployment**: `/var/www/wipay-client/`
 *   **Role**:
     *   **`index.html`**: The Public Landing Page. Customers select packages and pay via Mobile Money.
-    *   **`dashboard.html`**: The Admin Interface. Admins manage vouchers, view sales stats, and sell vouchers manually.
+    *   **`dashboard.html`**: The Admin Interface. Admins manage vouchers, routers, view sales stats, and sell vouchers manually.
     *   **`login.html`**: Authentication portal for Admins and Super Admins.
 
 ### 1.2 The Backend (Server)
 *   **Technology**: Node.js (Express framework).
 *   **Location**: `server/` folder.
+*   **Deployment**: `/var/www/wipay-server/`
 *   **Entry Point**: `server.js` (Port 5002).
 *   **Role**: Handles Business Logic, Database interactions, and 3rd Party APIs.
 
@@ -26,42 +28,42 @@ The application follows a **Monolithic Client-Server Architecture**.
 *   **Technology**: MySQL.
 *   **Key Tables**:
     *   `admins`: User accounts and billing settings.
+    *   `routers`: Managing different router instances.
     *   `vouchers`: Wi-Fi codes (linked to packages).
-    *   `transactions`: Log of all Mobile Money payments.
+    *   `transactions`: Log of all Mobile Money payments (now with `router_id`).
     *   `sms_fees`: **The Ledger** for SMS credits (Deposit vs Usage).
 
 ---
 
 ## 2. Key Features & Workflows
 
-### 2.1 Multi-Tenancy
+### 2.1 Multi-Tenancy & Router Management
 *   Each Admin (Tenant) has their own "Space".
-*   They create their own **Packages** (e.g., "1 Hour - 500 UGX") and **Categories**.
-*   Data Isolation: Admin A cannot see Admin B's vouchers or revenue.
+*   Admins can add multiple **Routers** (e.g., "Main Branch", "Cafe Spot") and link them to Mikrotik instance.
+*   Transactions are tagged with `router_id`, allowing granular filtering of revenue and sales.
 
 ### 2.2 Payment Processing (Mobile Money)
 *   **Provider**: Relworx API.
 *   **Flow**:
     1.  User enters Phone Number on `index.html`.
-    2.  Server calls Relworx to trigger a generic prompt.
+    2.  Server initiates payment (tagged with `router_id`).
     3.  **Verification**:
         *   **Webhook**: Relworx notifies Server (Updates status instantly).
-        *   **Active Polling**: If Webhook fails (e.g., Localhost), Frontend asks Server to manually check Relworx status every 5s.
+        *   **Active Polling**: If Webhook fails (e.g., Localhost), Frontend asks Server to manually check Relworx status.
     4.  **Completion**: On success, a voucher is allocated and sent via SMS.
 
 ### 2.3 SMS & Voucher System
 *   **Selling Vouchers**:
     *   Admins can "Sell" a voucher manually from the Dashboard.
     *   **Cost**: Each sale deducts **35 UGX** from the Admin's `sms_fees` wallet.
-    *   **Logic**: DB Transaction ensures no voucher is sold twice.
 *   **Buying SMS Credits**:
     *   Admins "Top Up" their SMS wallet using Mobile Money.
-    *   Balance Calculation: `SUM(Successful Deposits) - SUM(Usage)`.
+    *   **UX**: Background polling allows minimizing the modal while waiting for payment.
 
 ### 2.4 Admin Dashboard
 *   **Real-Time Context**:
+    *   **Router Filtering**: Dropdown to filter all stats/charts by specific router.
     *   **Auto-Refresh**: Views update every 10 seconds.
-    *   **Online Status**: Green dot indicates recent activity.
 *   **Financials**:
     *   Tracks Daily, Weekly, Monthly, and Yearly Revenue.
     *   Calculates `Net Balance` (Revenue - Withdrawals).
@@ -75,7 +77,7 @@ WIPAY/
 ├── client/                  # [Frontend]
 │   ├── dashboard.html       # Admin SPA
 │   ├── index.html           # Public Landing
-│   └── js/config.js         # API Configuration
+│   └── js/                  # Scripts
 │
 ├── server/                  # [Backend]
 │   ├── server.js            # Entry Point (CORS, Rate Limiting)
@@ -98,7 +100,7 @@ WIPAY/
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET` | `/api/packages` | Public list of internet packages. |
-| `POST` | `/api/purchase` | Initiate Mobile Money payment. |
+| `POST` | `/api/purchase` | Initiate Mobile Money payment (Requires `router_id`). |
 | `POST` | `/api/check-payment-status` | Poll for payment completion. |
 
 ### Admin Endpoints (Protected)
@@ -108,8 +110,8 @@ WIPAY/
 | :--- | :--- | :--- |
 | `POST` | `/api/admin/sell-voucher` | Sell voucher & Send SMS (-35 SMS Fee). |
 | `POST` | `/api/admin/buy-sms` | Top up SMS wallet. |
-| `GET` | `/api/admin/sms-balance` | Get current SMS credit balance. |
-| `GET` | `/api/admin/stats` | Get financial reports. |
+| `GET` | `/api/admin/routers` | List all routers. |
+| `GET` | `/api/admin/stats` | Get financial reports (Supports `?router_id=X`). |
 
 ---
 

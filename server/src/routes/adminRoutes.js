@@ -16,13 +16,13 @@ router.use('/admin', authenticateToken);
 
 // --- Categories ---
 router.post('/admin/categories', async (req, res) => {
-    const { name } = req.body;
+    const { name, router_id } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required' });
 
     try {
-        const [result] = await db.query('INSERT INTO categories (name, admin_id) VALUES (?, ?)', [name, req.user.id]);
+        const [result] = await db.query('INSERT INTO categories (name, admin_id, router_id) VALUES (?, ?, ?)', [name, req.user.id, router_id || null]);
         req.io.emit('data_update', { type: 'categories' });
-        res.json({ id: result.insertId, name, message: 'Category created' });
+        res.json({ id: result.insertId, name, router_id, message: 'Category created' });
     } catch (err) {
         console.error('Create Category Error:', err);
         res.status(500).json({ error: 'Failed to create category' });
@@ -31,10 +31,43 @@ router.post('/admin/categories', async (req, res) => {
 
 router.get('/admin/categories', async (req, res) => {
     try {
-        const [rows] = await db.query('SELECT * FROM categories WHERE admin_id = ? ORDER BY created_at DESC', [req.user.id]);
+        const router_id = req.query.router_id;
+        let query = 'SELECT * FROM categories WHERE admin_id = ?';
+        let params = [req.user.id];
+
+        if (router_id && router_id !== 'all') {
+            query += ' AND router_id = ?'; // STRICT: Show ONLY specific
+            params.push(router_id);
+        } else {
+            // For "All", maybe show everything? Or only Globals?
+            // Let's show everything for now.
+        }
+
+        query += ' ORDER BY created_at DESC';
+
+        const [rows] = await db.query(query, params);
         res.json(rows);
     } catch (err) {
         res.status(500).json({ error: 'Failed to fetch categories' });
+    }
+});
+
+
+
+router.put('/admin/categories/:id', async (req, res) => {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    try {
+        const [result] = await db.query('UPDATE categories SET name = ? WHERE id = ? AND admin_id = ?', [name, req.params.id, req.user.id]);
+        if (result.affectedRows === 0) return res.status(404).json({ error: 'Category not found' });
+
+        req.io.emit('data_update', { type: 'categories' });
+        req.io.emit('data_update', { type: 'packages' }); // Cascaded UI update
+        res.json({ message: 'Category updated successfully' });
+    } catch (err) {
+        console.error('Update Category Error:', err);
+        res.status(500).json({ error: 'Failed to update category' });
     }
 });
 
@@ -83,9 +116,44 @@ router.delete('/admin/categories/:id', async (req, res) => {
     }
 });
 
+
+// --- Routers ---
+router.post('/admin/routers', async (req, res) => {
+    const { name, mikhmon_url } = req.body;
+    if (!name || !mikhmon_url) return res.status(400).json({ error: 'Name and URL are required' });
+
+    try {
+        const [result] = await db.query('INSERT INTO routers (name, mikhmon_url, admin_id) VALUES (?, ?, ?)', [name, mikhmon_url, req.user.id]);
+        req.io.emit('data_update', { type: 'routers' });
+        res.json({ id: result.insertId, name, message: 'Router added' });
+    } catch (err) {
+        console.error('Create Router Error:', err);
+        res.status(500).json({ error: 'Failed to add router' });
+    }
+});
+
+router.get('/admin/routers', async (req, res) => {
+    try {
+        const [rows] = await db.query('SELECT * FROM routers WHERE admin_id = ? ORDER BY created_at DESC', [req.user.id]);
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch routers' });
+    }
+});
+
+router.delete('/admin/routers/:id', async (req, res) => {
+    try {
+        await db.query('DELETE FROM routers WHERE id = ? AND admin_id = ?', [req.params.id, req.user.id]);
+        req.io.emit('data_update', { type: 'routers' });
+        res.json({ message: 'Router deleted' });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to delete router' });
+    }
+});
+
 // --- Packages ---
 router.post('/admin/packages', async (req, res) => {
-    const { name, price, validity_hours, category_id, data_limit_mb } = req.body;
+    const { name, price, validity_hours, category_id, data_limit_mb, router_id } = req.body;
 
     if (!name || !price || !category_id) {
         return res.status(400).json({ error: 'Missing required fields' });
@@ -93,26 +161,52 @@ router.post('/admin/packages', async (req, res) => {
 
     try {
         await db.query(`
-            INSERT INTO packages (category_id, name, price, validity_hours, data_limit_mb, created_at, admin_id)
-            VALUES (?, ?, ?, ?, ?, NOW(), ?)
-        `, [category_id, name, price, validity_hours || 0, data_limit_mb || 0, req.user.id]);
+            INSERT INTO packages (category_id, name, price, validity_hours, data_limit_mb, created_at, admin_id, router_id)
+            VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)
+        `, [category_id, name, price, validity_hours || 0, data_limit_mb || 0, req.user.id, router_id || null]);
         req.io.emit('data_update', { type: 'packages' });
         res.json({ message: 'Package created successfully' });
     } catch (err) {
-        console.error('Create Package Error:', err);
         res.status(500).json({ error: 'Failed to create package' });
+    }
+});
+
+router.patch('/admin/packages/:id/toggle', async (req, res) => {
+    try {
+        const [rows] = await db.query('SELECT is_active FROM packages WHERE id = ? AND admin_id = ?', [req.params.id, req.user.id]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Package not found' });
+
+        const currentState = rows[0].is_active;
+        const newState = !currentState;
+
+        await db.query('UPDATE packages SET is_active = ? WHERE id = ?', [newState, req.params.id]);
+        req.io.emit('data_update', { type: 'packages' }); // Notify all clients
+        res.json({ message: 'Package status updated', is_active: newState });
+    } catch (err) {
+        console.error('Toggle Package Error:', err);
+        res.status(500).json({ error: 'Failed to update package status' });
     }
 });
 
 router.get('/admin/packages', async (req, res) => {
     try {
-        const [rows] = await db.query(`
-            SELECT p.*, c.name as category_name 
+        const router_id = req.query.router_id;
+        let query = `
+            SELECT p.id, p.name, p.price, p.validity_hours, p.data_limit_mb, p.is_active, p.created_at, c.name as category_name, p.router_id 
             FROM packages p 
             LEFT JOIN categories c ON p.category_id = c.id 
             WHERE p.admin_id = ?
-            ORDER BY p.created_at DESC
-        `, [req.user.id]);
+        `;
+        let params = [req.user.id];
+
+        if (router_id && router_id !== 'all') {
+            query += ' AND p.router_id = ?';
+            params.push(router_id);
+        }
+
+        query += ' ORDER BY p.created_at DESC';
+
+        const [rows] = await db.query(query, params);
         res.json(rows);
     } catch (err) {
         console.error('Fetch Packages Error:', err);
@@ -120,16 +214,35 @@ router.get('/admin/packages', async (req, res) => {
     }
 });
 
+
+
+router.put('/admin/packages/:id', async (req, res) => {
+    const { name, price, validity_hours, data_limit_mb, category_id } = req.body;
+
+    if (!name || !price || !category_id) {
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    try {
+        const [result] = await db.query(`
+            UPDATE packages 
+            SET name = ?, price = ?, validity_hours = ?, data_limit_mb = ?, category_id = ?
+            WHERE id = ? AND admin_id = ?
+        `, [name, price, validity_hours || 0, data_limit_mb || 0, category_id, req.params.id, req.user.id]);
+
+        if (result.affectedRows === 0) return res.status(404).json({ error: 'Package not found' });
+
+        req.io.emit('data_update', { type: 'packages' });
+        res.json({ message: 'Package updated successfully' });
+    } catch (err) {
+        console.error('Update Package Error:', err);
+        res.status(500).json({ error: 'Failed to update package' });
+    }
+});
+
 // --- Vouchers ---
 router.post('/admin/vouchers/import', upload.single('file'), async (req, res) => {
-    const { package_id } = req.body;
-
-    console.log('DEBUG IMPORT RE-TRY:', {
-        body: req.body,
-        file: req.file ? req.file.path : 'MISSING',
-        content_type: req.headers['content-type'],
-        all_headers: req.headers
-    });
+    const { package_id, router_id } = req.body; // router_id might come from frontend if package is global
 
     if (!req.file || !package_id) {
         return res.status(400).json({ error: 'File and package_id are required' });
@@ -139,34 +252,39 @@ router.post('/admin/vouchers/import', upload.single('file'), async (req, res) =>
     const BATCH_SIZE = 500;
     let totalInserted = 0;
 
+    // Check if package has a router_id
+    // If YES, vouchers inherit it. If NO, vouchers might use the passed router_id (if we allow Global Packages to have Specific Vouchers? Complicated. 
+    // Simplified Logic: Vouchers inherit Package's router_id. If package is Global, Vouchers are Global. 
+    // OR: Vouchers created under specific router view get that router_id.
+    // Let's lookup package first.
+    let packageRouterId = null;
+    try {
+        const [pkgRows] = await db.query('SELECT router_id FROM packages WHERE id = ?', [package_id]);
+        if (pkgRows.length > 0) packageRouterId = pkgRows[0].router_id;
+    } catch (e) { console.error("Error looking up package router:", e); }
+
+    // Final Router ID for vouchers: Package's ID takes precedence (strict), or fallback to passed ID?
+    // If Package is Specific, vouchers MUST be specific to that router.
+    // If Package is Global (NULL), vouchers CAN be specific (if sold from specific router view) or Global.
+    // Use packageRouterId if exists, otherwise use req.body.router_id
+    const finalRouterId = packageRouterId || router_id || null;
+
     const processBatch = async (batch) => {
         if (batch.length === 0) return;
-        const placeholder = batch.map(() => '(?, ?, ?, ?)').join(', ');
-        const values = [];
-        batch.forEach(row => {
-            // CSV columns: code, comment (optional), package_ref (optional)
-            // Or just single column 'code'
-            const code = row.code || row[0]; // adaptive for header/no-header
-            const comment = row.comment || null;
-            const pkgRef = row.package_ref || null;
-            values.push(package_id, code, comment, pkgRef);
-        });
 
-        // Insert ignoring duplicates
-        const query = `INSERT IGNORE INTO vouchers (package_id, code, comment, package_ref, admin_id) VALUES ${placeholder.replace(/\(.*\)/g, `(?, ?, ?, ?, ${req.user.id})`)}`;
-
-        // Fix: The placeholder replacement above is tricky with adaptive values. 
-        // Let's use strict mapping to ensure admin_id is correct.
+        // Adaptive placeholder: code, comment, package_ref
         const strictValues = [];
         batch.forEach(row => {
             const code = row.code || (Object.values(row)[0]); // First column as code
             const comment = row.comment || null;
             const pkgRef = row.package_ref || null;
-            strictValues.push(package_id, code, comment, pkgRef, req.user.id);
+            strictValues.push(package_id, code, comment, pkgRef, req.user.id, finalRouterId);
         });
-        const strictPlaceholder = batch.map(() => '(?, ?, ?, ?, ?)').join(', ');
 
-        const [result] = await db.query(`INSERT IGNORE INTO vouchers (package_id, code, comment, package_ref, admin_id) VALUES ${strictPlaceholder}`, strictValues);
+        // We added router_id to the insert columns
+        const strictPlaceholder = batch.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
+
+        const [result] = await db.query(`INSERT IGNORE INTO vouchers (package_id, code, comment, package_ref, admin_id, router_id) VALUES ${strictPlaceholder}`, strictValues);
         totalInserted += result.affectedRows;
     };
 
@@ -209,14 +327,24 @@ router.post('/admin/vouchers/import', upload.single('file'), async (req, res) =>
 
 router.get('/admin/vouchers', async (req, res) => {
     try {
-        const [rows] = await db.query(`
-            SELECT v.id, v.code, v.comment, v.package_ref, v.is_used, p.name as package_name, v.created_at
+        const router_id = req.query.router_id;
+
+        let query = `
+            SELECT v.id, v.code, v.comment, v.package_ref, v.is_used, p.name as package_name, v.created_at, v.router_id
             FROM vouchers v
             JOIN packages p ON v.package_id = p.id
             WHERE v.is_used = FALSE AND v.admin_id = ?
-            ORDER BY v.created_at DESC
-            LIMIT 100
-        `, [req.user.id]);
+        `;
+        let params = [req.user.id];
+
+        if (router_id && router_id !== 'all') {
+            query += ' AND v.router_id = ?';
+            params.push(router_id);
+        }
+
+        query += ' ORDER BY v.created_at DESC LIMIT 100';
+
+        const [rows] = await db.query(query, params);
         res.json(rows);
     } catch (err) {
         console.error('Fetch Vouchers Error:', err);
@@ -268,8 +396,6 @@ router.post('/admin/buy-sms', async (req, res) => {
 
         const reference = `SMS-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-        console.log(`[SMS-TOPUP] Initiating for ${formattedPhone}, Amount: ${amount}, Ref: ${reference}`);
-
         // 1. Insert Pending Record
         await db.query('INSERT INTO sms_fees (admin_id, amount, type, description, status, reference) VALUES (?, ?, ?, ?, ?, ?)',
             [req.user.id, amount, 'deposit', `Pending Top up via ${formattedPhone}`, 'pending', reference]);
@@ -293,8 +419,6 @@ router.post('/admin/buy-sms', async (req, res) => {
         });
 
         const paymentData = await response.json();
-        console.log(`[SMS-TOPUP-DEBUG] Response Status: ${response.status}`);
-        console.log(`[SMS-TOPUP-DEBUG] Response Body:`, JSON.stringify(paymentData, null, 2));
 
         if (response.ok) {
             res.json({
@@ -416,7 +540,7 @@ router.post('/admin/sell-voucher', async (req, res) => {
             [req.user.id, -SMS_COST, 'usage', `Voucher Sale: ${voucher.code}`]);
 
         // 5. Send SMS (Mock or Real)
-        const message = `Code: ${voucher.code}. Package: ${pkg.name}. Valid: ${pkg.validity_hours}h.`;
+        const message = `Code: ${voucher.code}. Package: ${pkg.name}.`;
         await sendSMS(phone_number, message);
 
         // 6. Record SMS Log (if table exists, otherwise skip or ensure it does)
@@ -462,14 +586,24 @@ router.delete('/admin/vouchers', async (req, res) => {
 // --- Transactions / Payments History ---
 router.get('/admin/transactions', async (req, res) => {
     try {
-        const [rows] = await db.query(`
-            SELECT t.id, t.transaction_ref, t.phone_number, t.amount, t.status, t.payment_method, t.created_at, p.name as package_name
+        const { router_id } = req.query;
+        let query = `
+            SELECT t.id, t.transaction_ref, t.phone_number, t.amount, t.status, t.payment_method, t.created_at, p.name as package_name, r.name as router_name
             FROM transactions t
             LEFT JOIN packages p ON t.package_id = p.id
+            LEFT JOIN routers r ON t.router_id = r.id
             WHERE t.admin_id = ?
-            ORDER BY t.created_at DESC
-            LIMIT 500
-        `, [req.user.id]);
+        `;
+        const params = [req.user.id];
+
+        if (router_id) {
+            query += ' AND t.router_id = ?';
+            params.push(router_id);
+        }
+
+        query += ' ORDER BY t.created_at DESC LIMIT 500';
+
+        const [rows] = await db.query(query, params);
         res.json(rows);
     } catch (err) {
         console.error('Fetch Transactions Error:', err);
@@ -477,20 +611,97 @@ router.get('/admin/transactions', async (req, res) => {
     }
 });
 
+
+// --- Analytics (Graphs) ---
+// --- Analytics (Graphs) ---
+router.get('/admin/analytics/transactions', async (req, res) => {
+    const { period } = req.query; // 'weekly', 'monthly', 'yearly'
+    const adminId = req.user.id;
+    let query = '';
+    let params = [adminId];
+
+    try {
+        if (period === 'weekly') {
+            // Last 7 days
+            query = `
+                SELECT DATE_FORMAT(created_at, '%a') as label, SUM(amount) as total_amount, COUNT(*) as count
+                FROM transactions
+                WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual' 
+                AND created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+            `;
+            if (req.query.router_id) {
+                query += ' AND router_id = ?';
+                params.push(req.query.router_id);
+            }
+            query += `
+                GROUP BY DATE_FORMAT(created_at, '%a')
+                ORDER BY MIN(created_at) ASC
+            `;
+        } else if (period === 'monthly') {
+            // Last 30 days
+            query = `
+                SELECT DATE_FORMAT(created_at, '%d %b') as label, SUM(amount) as total_amount, COUNT(*) as count
+                FROM transactions
+                WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual'
+                AND created_at >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)
+            `;
+            if (req.query.router_id) {
+                query += ' AND router_id = ?';
+                params.push(req.query.router_id);
+            }
+            query += `
+                GROUP BY DATE_FORMAT(created_at, '%d %b')
+                ORDER BY MIN(created_at) ASC
+            `;
+        } else if (period === 'yearly') {
+            // Last 12 months
+            query = `
+                SELECT DATE_FORMAT(created_at, '%b %Y') as label, SUM(amount) as total_amount, COUNT(*) as count
+                FROM transactions
+                WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual'
+                AND created_at >= DATE_SUB(CURDATE(), INTERVAL 11 MONTH)
+                GROUP BY DATE_FORMAT(created_at, '%b %Y')
+                ORDER BY MIN(created_at) ASC
+            `;
+        } else {
+            return res.status(400).json({ error: 'Invalid period' });
+        }
+
+        const [rows] = await db.query(query, params);
+        res.json(rows);
+    } catch (err) {
+        console.error('Analytics Error:', err); // Check PM2 logs for this
+        res.status(500).json({ error: 'Failed to fetch analytics: ' + err.message });
+    }
+});
+
+// --- Stats & Logs ---
 // --- Stats & Logs ---
 router.get('/admin/stats', async (req, res) => {
     try {
-        // Exclude 'manual' payments from revenue stats
-        const [transStats] = await db.query(`
+        console.log('DEBUG STATS USER:', req.user.id);
+        const { router_id } = req.query;
+
+        let whereClause = "WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual'";
+        const params = [req.user.id];
+
+        if (router_id) {
+            whereClause += " AND router_id = ?";
+            params.push(router_id);
+        }
+
+        const statsQuery = `
             SELECT 
-                COALESCE(SUM(CASE WHEN status = 'success' AND payment_method != 'manual' AND DATE(created_at) = CURDATE() THEN (amount - fee) ELSE 0 END), 0) as daily_revenue,
-                COALESCE(SUM(CASE WHEN status = 'success' AND payment_method != 'manual' AND YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1) THEN (amount - fee) ELSE 0 END), 0) as weekly_revenue,
-                COALESCE(SUM(CASE WHEN status = 'success' AND payment_method != 'manual' AND MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE()) THEN (amount - fee) ELSE 0 END), 0) as monthly_revenue,
-                COALESCE(SUM(CASE WHEN status = 'success' AND payment_method != 'manual' AND YEAR(created_at) = YEAR(CURDATE()) THEN (amount - fee) ELSE 0 END), 0) as yearly_revenue,
-                COALESCE(SUM(CASE WHEN status = 'success' AND payment_method != 'manual' THEN (amount - fee) ELSE 0 END), 0) as total_revenue
+                COALESCE(SUM(CASE WHEN DATE(created_at) = CURDATE() THEN (amount - COALESCE(fee,0)) ELSE 0 END), 0) as daily_revenue,
+                COALESCE(SUM(CASE WHEN YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1) THEN (amount - COALESCE(fee,0)) ELSE 0 END), 0) as weekly_revenue,
+                COALESCE(SUM(CASE WHEN MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE()) THEN (amount - COALESCE(fee,0)) ELSE 0 END), 0) as monthly_revenue,
+                COALESCE(SUM(CASE WHEN YEAR(created_at) = YEAR(CURDATE()) THEN (amount - COALESCE(fee,0)) ELSE 0 END), 0) as yearly_revenue,
+                COALESCE(SUM(amount - COALESCE(fee,0)), 0) as total_revenue
             FROM transactions
-            WHERE admin_id = ?
-        `, [req.user.id]);
+            ${whereClause}
+        `;
+
+        const [transStats] = await db.query(statsQuery, params);
 
         const [withdrawStats] = await db.query('SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals WHERE admin_id = ?', [req.user.id]);
 
@@ -503,7 +714,7 @@ router.get('/admin/stats', async (req, res) => {
         const [catCount] = await db.query('SELECT count(*) as count FROM categories WHERE admin_id = ?', [adminId]);
         const [pkgCount] = await db.query('SELECT count(*) as count FROM packages WHERE admin_id = ?', [adminId]);
         const [voucherCount] = await db.query('SELECT count(*) as count FROM vouchers WHERE admin_id = ? AND is_used = 0', [adminId]);
-        const [boughtCount] = await db.query('SELECT count(*) as count FROM vouchers WHERE admin_id = ? AND is_used = 1', [adminId]);
+        const [boughtCount] = await db.query('SELECT count(*) as count FROM transactions WHERE admin_id = ? AND status = "success" AND payment_method != "manual" AND transaction_ref NOT LIKE "SMS-%"', [adminId]);
         const [paymentCount] = await db.query('SELECT count(*) as count FROM transactions WHERE admin_id = ? AND status = "success"', [adminId]);
 
         // 3. Subscription Status
@@ -512,7 +723,8 @@ router.get('/admin/stats', async (req, res) => {
         res.json({
             finance: {
                 ...transStats[0],
-                total_revenue: netBalance
+                gross_revenue: totalRevenue, // Actual total collected
+                net_balance: netBalance      // Available to withdraw
             },
             counts: {
                 categories_count: catCount[0].count,
@@ -528,6 +740,18 @@ router.get('/admin/stats', async (req, res) => {
     } catch (err) {
         console.error('Stats Error:', err);
         res.status(500).json({ error: 'Failed to fetch stats' });
+    }
+});
+
+// SMS Balance (Mock or Real)
+router.get('/admin/sms-balance', async (req, res) => {
+    try {
+        // Retrieve balance from Relworx or mocked
+        // For now, return 0 or fetch from admins table if column exists.
+        // Returning 0 to prevent crash. User can request full implementation later.
+        res.json({ balance: 0 });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch SMS balance' });
     }
 });
 
@@ -559,15 +783,15 @@ router.post('/admin/renew-subscription', async (req, res) => {
         if (formattedPhone.startsWith('0')) formattedPhone = '+256' + formattedPhone.slice(1);
         else if (!formattedPhone.startsWith('+')) formattedPhone = '+' + formattedPhone;
 
-        const reference = `SUB-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        const reference = `SUB - ${Date.now()} -${Math.floor(Math.random() * 1000)} `;
 
-        console.log(`[SUBSCRIPTION] Initiating for ${formattedPhone}, Months: ${months}, Amount: ${amount}, Ref: ${reference}`);
+        console.log(`[SUBSCRIPTION] Initiating for ${formattedPhone}, Months: ${months}, Amount: ${amount}, Ref: ${reference} `);
 
         // 1. Insert Pending Record in NEW table
         await db.query(`
-            INSERT INTO admin_subscriptions 
-            (admin_id, amount, months, phone_number, status, reference) 
-            VALUES (?, ?, ?, ?, 'pending', ?)
+            INSERT INTO admin_subscriptions
+            (admin_id, amount, months, phone_number, status, reference)
+        VALUES(?, ?, ?, ?, 'pending', ?)
         `, [req.user.id, amount, months, formattedPhone, reference]);
 
         // 2. Call Relworx
@@ -576,7 +800,7 @@ router.post('/admin/renew-subscription', async (req, res) => {
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/vnd.relworx.v2',
-                'Authorization': `Bearer ${RELWORX_API_KEY}`
+                'Authorization': `Bearer ${RELWORX_API_KEY} `
             },
             body: JSON.stringify({
                 account_no: RELWORX_ACCOUNT_NO,
@@ -584,12 +808,12 @@ router.post('/admin/renew-subscription', async (req, res) => {
                 msisdn: formattedPhone,
                 currency: 'UGX',
                 amount: Number(amount),
-                description: `Subscription Renewal (${months} months)`
+                description: `Subscription Renewal(${months} months)`
             })
         });
 
         const paymentData = await response.json();
-        console.log(`[SUBSCRIPTION] Gateway Response:`, JSON.stringify(paymentData));
+        console.log(`[SUBSCRIPTION] Gateway Response: `, JSON.stringify(paymentData));
 
         if (response.ok) {
             res.json({
@@ -598,7 +822,7 @@ router.post('/admin/renew-subscription', async (req, res) => {
                 reference: reference
             });
         } else {
-            console.error(`[SUBSCRIPTION] Gateway Failed:`, paymentData);
+            console.error(`[SUBSCRIPTION] Gateway Failed: `, paymentData);
             await db.query('UPDATE admin_subscriptions SET status = "failed" WHERE reference = ?', [reference]);
             res.status(400).json({ error: 'Payment gateway failed', details: paymentData });
         }
@@ -641,8 +865,6 @@ router.get('/admin/subscription-status/:reference', async (req, res) => {
 
         if (gwStatus === 'SUCCESS' || itemStatus === 'SUCCESS') {
             console.log(`[SUBSCRIPTION] Confirmed Success: ${req.params.reference}`);
-
-            // Update Transaction Status
             await db.query('UPDATE admin_subscriptions SET status = "success" WHERE reference = ?', [req.params.reference]);
 
             // Update Admin Expiry

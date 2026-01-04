@@ -1,25 +1,41 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const helmet = require('helmet');
 const path = require('path');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const http = require('http');
 const { Server } = require('socket.io');
+const { runPendingMigrations } = require('./src/utils/dbMigration');
 
 const app = express();
 const server = http.createServer(app);
+
+// Run Migrations
+runPendingMigrations();
+
 const io = new Server(server, {
     cors: {
-        origin: "*", // Allow all origins (for ngrok/local)
+        origin: process.env.CORS_ORIGIN || "*", // Use env var in production
         methods: ["GET", "POST"]
     }
 });
 
-const PORT = 5002;
+const PORT = process.env.PORT || 5002;
 
 app.set('trust proxy', 1);
+
+// Debug Logging Middleware
+app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} ${res.statusCode} (${duration}ms)`);
+    });
+    next();
+});
 
 // Attach IO to request for routes to use
 app.use((req, res, next) => {
@@ -32,7 +48,7 @@ app.use((req, res, next) => {
 // 1. Rate Limiting
 const globalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 3000,
+    max: process.env.RATE_LIMIT_MAX || 10000, // Configurable limit
     message: 'Too many requests from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
@@ -44,8 +60,15 @@ const authLimiter = rateLimit({
     message: 'Too many login attempts, please try again later.',
 });
 
-// 2. CORS Policy
-app.use(cors());
+// 2. Security Headers & CORS
+app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false
+}));
+app.use(cors({
+    origin: process.env.CORS_ORIGIN || "*", // Use env var in production
+    credentials: true
+}));
 
 // --- Middleware ---
 app.use(bodyParser.json());
