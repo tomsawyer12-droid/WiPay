@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="css/super.css">
 </head>
 <script>
-    if (!localStorage.getItem('wipay_token')) {
+    if (!localStorage.getItem('wipay_role')) {
         window.location.href = 'login_dashboard.html';
     }
 </script>
@@ -264,27 +264,45 @@
 
         // --- Auth Helper ---
         async function fetchAuth(url, options = {}) {
-            const token = localStorage.getItem('wipay_token');
-            if (!token) return window.location.href = 'login.html';
+            // Cookie-based Auth
+            options.credentials = 'include';
 
-            const headers = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', ...options.headers };
+            const headers = { 'Content-Type': 'application/json', ...options.headers };
 
             // Handle URL: if it starts with /api, replace with full URL
-            const fullUrl = url.startsWith('/api') ? url.replace('/api', CONFIG.API_BASE_URL) : url;
-
-            const res = await fetch(fullUrl, { ...options, headers });
-
-            if (res.status === 401 || res.status === 403) {
-                localStorage.removeItem('wipay_token');
-                window.location.href = 'login_dashboard.html';
-                return Promise.reject('Unauthorized');
+            // CONFIG is loaded from js/config.js. If /api, we might need to prepend logic similar to dashboard-logic.js
+            // But here the code relied on replacing /api with CONFIG.API_BASE_URL.
+            let fullUrl = url;
+            if (url.startsWith('/api') && typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL) {
+                fullUrl = url.replace('/api', CONFIG.API_BASE_URL);
             }
-            return res;
+
+            try {
+                const res = await fetch(fullUrl, { ...options, headers });
+
+                if (res.status === 401 || res.status === 403) {
+                    // Session Expired
+                    if (!window.location.href.includes('login_dashboard.html')) {
+                        window.location.href = 'login_dashboard.html';
+                    }
+                    return Promise.reject('Unauthorized');
+                }
+                return res;
+            } catch (err) {
+                console.error('FetchAuth Error', err);
+                throw err;
+            }
         }
 
         // --- Logout ---
-        document.getElementById('logoutLink').onclick = (e) => {
+        document.getElementById('logoutLink').onclick = async (e) => {
             e.preventDefault();
+            try {
+                await fetchAuth('/api/auth/logout', { method: 'POST' });
+            } catch (e) { console.error('Logout failed', e); }
+
+            localStorage.removeItem('wipay_user');
+            localStorage.removeItem('wipay_role');
             localStorage.removeItem('wipay_token');
             window.location.href = 'login_dashboard.html';
         };

@@ -4,6 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.socket.io https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data:;">
     <title>UGPAY - Admin Dashboard</title>
     <link rel="icon" type="image/png" href="img/favicon.png">
     <!-- Google Fonts: Inter -->
@@ -53,7 +55,8 @@
         crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
-        if (!localStorage.getItem('wipay_token')) {
+        // Check session via API validation (handled in logic.js) or role presence
+        if (!localStorage.getItem('wipay_role')) {
             window.location.href = 'login_dashboard.html';
         }
     </script>

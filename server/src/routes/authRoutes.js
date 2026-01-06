@@ -18,11 +18,26 @@ router.post('/login', async (req, res) => {
 
         // Create Token
         const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
+
+        // Set HttpOnly Cookie
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production', // Secure in production
+            sameSite: 'strict',
+            maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        });
+
         res.json({ token, username: user.username, role: user.role });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server error' });
     }
+});
+
+// Logout API
+router.post('/logout', (req, res) => {
+    res.clearCookie('token');
+    res.json({ message: 'Logged out successfully' });
 });
 
 // Change Password API

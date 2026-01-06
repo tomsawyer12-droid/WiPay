@@ -9,8 +9,7 @@ if (!JWT_SECRET) {
 }
 
 function authenticateToken(req, res, next) {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    const token = req.cookies.token || (req.headers['authorization'] && req.headers['authorization'].split(' ')[1]);
 
     if (!token) return res.sendStatus(401); // Unauthorized
 

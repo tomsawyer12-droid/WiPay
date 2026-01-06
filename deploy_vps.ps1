@@ -40,7 +40,14 @@ $remoteCommands = @"
     # Run the isolation migration script
     node src/utils/migrate_routers_isolation.js
 
-    echo '4. Restarting Backend...'
+    echo '4. Installing Dependencies...'
+    cd /var/www/wipay-server
+    npm install --production
+
+    echo '5. Restarting Backend...'
+    pm2 restart wipay-backend
+
+    echo '6. Cleanup...'
     pm2 restart wipay-backend
 
     echo '5. Cleanup...'

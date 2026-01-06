@@ -1,6 +1,49 @@
 console.log("DASHBOARD LOGIC LOADED");
 
-let currentRouterFilter = ''; // Global State filter
+// --- Secure Fetch Wrapper (Cookie-based) ---
+window.fetchAuth = async function (url, options = {}) {
+    options.credentials = 'include'; // Send HttpOnly cookies
+    options.headers = options.headers || {};
+
+    // Default JSON check
+    if (!options.headers['Content-Type'] && !(options.body instanceof FormData)) {
+        options.headers['Content-Type'] = 'application/json';
+    }
+
+    try {
+        // If relative URL, prepend API_BASE_URL from config if needed
+        // But code uses fetchAuth('/api/...') so usually relative is fine proxy-wise or absolute if CONFIG.API_BASE_URL is set.
+        // Let's rely on caller.
+
+        let targetUrl = url;
+        if (url.startsWith('/') && typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL && CONFIG.API_BASE_URL.startsWith('http')) {
+            // If CONFIG.API_BASE_URL is http://localhost:5002, we might need to prepend.
+            // But existing logic seemed to work with relative?
+            // If we are on localhost:5500 (frontend) and API is 5002, we need absolute.
+            if (url.startsWith('/api') && CONFIG.API_BASE_URL.endsWith('/api')) {
+                // Avoid /api/api
+                targetUrl = CONFIG.API_BASE_URL + url.substring(4);
+            } else {
+                targetUrl = CONFIG.API_BASE_URL + url;
+            }
+        }
+
+        const res = await fetch(targetUrl, options);
+        if (res.status === 401 || res.status === 403) {
+            console.warn('Session expired');
+            // Check if we are already on login page to avoid loop?
+            if (!window.location.href.includes('login_dashboard.html')) {
+                window.location.href = 'login_dashboard.html';
+            }
+            throw new Error('Unauthorized');
+        }
+        return res;
+    } catch (err) {
+        console.error('FetchAuth Error:', err);
+        throw err;
+    }
+};
+
 
 // --- DEBUG PROBE ---
 try {
@@ -216,7 +259,7 @@ window.showToast = function (msg, type) {
 
     toast.innerHTML = `
         <div style="display:flex; align-items:center;">${icon}</div>
-        <div>${msg}</div>
+        <div>${escapeHtml(msg)}</div>
     `;
 
     document.body.appendChild(toast);
@@ -278,52 +321,7 @@ function showConfirm(message, callback) {
     modal.classList.remove('hidden');
 }
 
-// --- Auth Helper ---
-async function fetchAuth(url, options = {}) {
-    let token = localStorage.getItem('wipay_token');
-    if (!token) {
-        window.location.href = 'login.html';
-        return Promise.reject('No token');
-    }
 
-    // Aggressive Sanitization: Remove any non-printable ASCII characters
-    token = token.replace(/[^\x20-\x7E]/g, '').trim();
-
-    let headers = {
-        'Authorization': `Bearer ${token}`
-    };
-
-    // Merge options.headers safely
-    if (options.headers) {
-        for (const [key, value] of Object.entries(options.headers)) {
-            headers[key] = value;
-        }
-    }
-
-    // If using FormData, let browser set Content-Type header
-    if (options.body instanceof FormData) {
-        delete headers['Content-Type'];
-    }
-
-    const newOptions = { ...options, headers };
-
-    // Handle URL
-    const fullUrl = url.startsWith('/api') ? url.replace('/api', CONFIG.API_BASE_URL) : url;
-
-    try {
-        const response = await fetch(fullUrl, newOptions);
-
-        if (response.status === 401 || response.status === 403) {
-            localStorage.removeItem('wipay_token');
-            window.location.href = 'login_dashboard.html';
-            return Promise.reject('Unauthorized');
-        }
-        return response;
-    } catch (e) {
-        console.error('FetchAuth Error:', e);
-        throw e; // Re-throw to be caught by caller
-    }
-}
 
 // --- Main Helper Functions ---
 function calculateSMSPreview(val) {
@@ -399,7 +397,7 @@ function pollPaymentStatus(ref, type, progressBar, actionsDiv) {
         }
 
         try {
-            const res = await fetchAuth(`/api/admin/payment-status/${ref}`);
+            const res = await fetchAuth(`/ api / admin / payment - status / ${ref} `);
             const data = await res.json();
 
             if (data.status === 'success') {
@@ -467,14 +465,14 @@ async function createCategory() {
 
 async function loadCategoriesForSelect() {
     try {
-        const routerQuery = currentRouterFilter !== 'all' ? `?router_id=${currentRouterFilter}` : '';
-        const res = await fetchAuth(`/api/admin/categories${routerQuery}`);
+        const routerQuery = currentRouterFilter !== 'all' ? `? router_id = ${currentRouterFilter} ` : '';
+        const res = await fetchAuth(`/ api / admin / categories${routerQuery} `);
         const cats = await res.json();
         const sel = document.getElementById('pkgCategory');
         if (sel) {
             sel.innerHTML = '<option value="">Select Category</option>';
             cats.forEach(c => {
-                sel.innerHTML += `<option value="${c.id}">${escapeHtml(c.name)}</option>`;
+                sel.innerHTML += `< option value = "${c.id}" > ${escapeHtml(c.name)}</option > `;
             });
         }
     } catch (e) { console.error(e); }
@@ -526,7 +524,7 @@ async function submitEditCategory() {
     if (!name) return showAlert('Name required', 'error');
 
     try {
-        const res = await fetchAuth(`/api/admin/categories/${id}`, {
+        const res = await fetchAuth(`/ api / admin / categories / ${id} `, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name })
@@ -564,7 +562,7 @@ async function openEditPackageModal(id, name, price, catId) {
     if (sel) {
         sel.innerHTML = '<option value="">Select Category</option>';
         cats.forEach(c => {
-            sel.innerHTML += `<option value="${c.id}" ${c.id == catId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`;
+            sel.innerHTML += `< option value = "${c.id}" ${c.id == catId ? 'selected' : ''}> ${escapeHtml(c.name)}</option > `;
         });
     }
 
@@ -580,7 +578,7 @@ async function submitEditPackage() {
     if (!name || !price || !catId) return showAlert('All fields required', 'error');
 
     try {
-        const res = await fetchAuth(`/api/admin/packages/${id}`, {
+        const res = await fetchAuth(`/ api / admin / packages / ${id} `, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, price, category_id: catId })
@@ -597,24 +595,24 @@ async function submitEditPackage() {
 }
 
 async function loadPackagesForImport() {
-    const routerQuery = currentRouterFilter ? `?router_id=${currentRouterFilter}` : '';
-    const res = await fetchAuth(`/api/admin/packages${routerQuery}`);
+    const routerQuery = currentRouterFilter ? `? router_id = ${currentRouterFilter} ` : '';
+    const res = await fetchAuth(`/ api / admin / packages${routerQuery} `);
     const pkgs = await res.json();
     const sel = document.getElementById('importPackageId');
     if (sel) {
         sel.innerHTML = '<option value="">Select Package</option>';
-        pkgs.forEach(p => sel.innerHTML += `<option value="${p.id}">${escapeHtml(p.name)} - ${p.price}</option>`);
+        pkgs.forEach(p => sel.innerHTML += `< option value = "${p.id}" > ${escapeHtml(p.name)} - ${p.price}</option > `);
     }
 }
 
 async function loadPackagesForSell() {
-    const routerQuery = currentRouterFilter ? `?router_id=${currentRouterFilter}` : '';
-    const res = await fetchAuth(`/api/admin/packages${routerQuery}`);
+    const routerQuery = currentRouterFilter ? `? router_id = ${currentRouterFilter} ` : '';
+    const res = await fetchAuth(`/ api / admin / packages${routerQuery} `);
     const pkgs = await res.json();
     const sel = document.getElementById('sellPackageId');
     if (sel) {
         sel.innerHTML = '<option value="">Select Package</option>';
-        pkgs.forEach(p => sel.innerHTML += `<option value="${p.id}">${escapeHtml(p.name)} (${p.price} UGX)</option>`);
+        pkgs.forEach(p => sel.innerHTML += `< option value = "${p.id}" > ${escapeHtml(p.name)} (${p.price} UGX)</option > `);
     }
 }
 
@@ -648,9 +646,9 @@ async function importVouchers() {
 
 // --- Voucher Actions ---
 async function deleteCategory(id, name) {
-    showConfirm(`Delete category "${name}"?`, async () => {
+    showConfirm(`Delete category "${name}" ? `, async () => {
         try {
-            const res = await fetchAuth(`/api/admin/categories/${id}`, { method: 'DELETE' });
+            const res = await fetchAuth(`/ api / admin / categories / ${id} `, { method: 'DELETE' });
             if (res.ok) {
                 showAlert('Category deleted');
                 fetchCategoriesList();
@@ -683,7 +681,7 @@ function checkVoucherSelection() {
 async function deleteSelectedVouchers() {
     const cbs = document.querySelectorAll('.voucher-cb:checked');
     const ids = Array.from(cbs).map(cb => cb.value);
-    showConfirm(`Delete ${ids.length} vouchers?`, async () => {
+    showConfirm(`Delete ${ids.length} vouchers ? `, async () => {
         try {
             const res = await fetchAuth('/api/admin/vouchers', {
                 method: 'DELETE',
@@ -741,7 +739,7 @@ async function submitSellVoucher() {
             const succMsg = document.getElementById('successMessage');
             if (succMsg) {
                 succMsg.innerHTML = `
-                    Voucher <strong>${data.voucher.code}</strong> has been sent successfully to <strong>${escapeHtml(phone)}</strong>.
+                    Voucher < strong > ${data.voucher.code}</strong > has been sent successfully to < strong > ${escapeHtml(phone)}</strong >.
                 `;
             }
             openDashModal('successModal');
@@ -818,7 +816,7 @@ async function loadStats() {
     try {
         let url = '/api/admin/stats';
         if (typeof currentRouterFilter !== 'undefined' && currentRouterFilter) {
-            url += `?router_id=${currentRouterFilter}`;
+            url += `? router_id = ${currentRouterFilter} `;
         }
         const res = await fetchAuth(url);
         const data = await res.json();
@@ -868,15 +866,15 @@ function showSubscriptionWarning(days, date) {
     const div = document.createElement('div');
     div.id = 'sub-alert';
     div.style.cssText = `
-        background: #ff9800; color: #000; padding: 15px;
-        text-align: center; font-weight: bold;
-        position: fixed; bottom: 20px; right: 20px; z-index: 9000;
-        border-radius: 5px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    background: #ff9800; color: #000; padding: 15px;
+    text - align: center; font - weight: bold;
+    position: fixed; bottom: 20px; right: 20px; z - index: 9000;
+    border - radius: 5px; box - shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
     `;
     const daysLeft = Math.ceil(days);
     div.innerHTML = `
         ⚠ Subscription expires in ${daysLeft} day${daysLeft !== 1 ? 's' : ''} (${date.toLocaleDateString()}).
-        <button onclick="this.parentElement.remove()" style="margin-left: 10px; background:none; border:none; cursor:pointer; font-weight:bold;">✕</button>
+    <button onclick="this.parentElement.remove()" style="margin-left: 10px; background:none; border:none; cursor:pointer; font-weight:bold;">✕</button>
     `;
     document.body.appendChild(div);
 }
@@ -964,7 +962,7 @@ function initDashboard() {
     const username = localStorage.getItem('wipay_user');
     if (username) {
         const welcomeEl = document.getElementById('welcomeMsg');
-        if (welcomeEl) welcomeEl.innerText = `WELCOME, ${username.toUpperCase()}`;
+        if (welcomeEl) welcomeEl.innerText = `WELCOME, ${username.toUpperCase()} `;
     }
 
     // 1. Mobile Menus
@@ -1060,7 +1058,7 @@ function showTableShimmer(tbodyId, colCount) {
         for (let j = 0; j < colCount; j++) {
             cols += '<td><div class="shimmer-line"></div></td>';
         }
-        tbody.innerHTML += `<tr class="shimmer-row">${cols}</tr>`;
+        tbody.innerHTML += `< tr class="shimmer-row" > ${cols}</tr > `;
     }
 }
 
@@ -1079,9 +1077,9 @@ async function loadAnalytics(period = 'weekly') {
     });
 
     try {
-        let url = `/api/admin/analytics/transactions?period=${period}`;
+        let url = `/ api / admin / analytics / transactions ? period = ${period} `;
         if (currentRouterFilter) {
-            url += `&router_id=${currentRouterFilter}`;
+            url += `& router_id=${currentRouterFilter} `;
         }
         const res = await fetchAuth(url);
         const data = await res.json();
@@ -1202,8 +1200,8 @@ window.addEventListener('click', function (e) {
 async function fetchCategoriesList() {
     showTableShimmer('categoriesTableBody', 2);
     try {
-        const routerQuery = currentRouterFilter !== 'all' ? `?router_id=${currentRouterFilter}` : '';
-        const res = await fetchAuth(`/api/admin/categories${routerQuery}`);
+        const routerQuery = currentRouterFilter !== 'all' ? `? router_id = ${currentRouterFilter} ` : '';
+        const res = await fetchAuth(`/ api / admin / categories${routerQuery} `);
         const rows = await res.json();
         const tbody = document.getElementById('categoriesTableBody');
         if (tbody) {
@@ -1216,16 +1214,16 @@ async function fetchCategoriesList() {
 
             rows.forEach(r => {
                 tbody.innerHTML += `
-                <tr>
-                    <td>
-                        <span>${escapeHtml(r.name)}</span>
-                        <button class="hover-edit-btn" onclick="openEditCategoryModal(${r.id}, '${r.name.replace(/'/g, "\\'")}')" title="Edit">
-                            <i class="fas fa-pen"></i>
-                        </button>
-                    </td>
-                    <td><button class="btn-cancel btn-sm" onclick="deleteCategory(${r.id}, '${r.name.replace(/'/g, "\\'")}')">Delete</button></td>
-                </tr>
-            `;
+        < tr >
+        <td>
+            <span>${escapeHtml(r.name)}</span>
+            <button class="hover-edit-btn" onclick="openEditCategoryModal(${r.id}, '${r.name.replace(/'/g, "\\'")}')" title="Edit">
+            <i class="fas fa-pen"></i>
+        </button>
+                    </td >
+        <td><button class="btn-cancel btn-sm" onclick="deleteCategory(${r.id}, '${r.name.replace(/'/g, "\\'")}')">Delete</button></td >
+                </tr >
+        `;
             });
         }
     } catch (e) { console.error(e); }
@@ -1234,8 +1232,8 @@ async function fetchCategoriesList() {
 async function fetchPackagesList() {
     showTableShimmer('packagesTableBody', 5);
     try {
-        const routerQuery = currentRouterFilter ? `?router_id=${currentRouterFilter}` : '';
-        const res = await fetchAuth(`/api/admin/packages${routerQuery}`);
+        const routerQuery = currentRouterFilter ? `? router_id = ${currentRouterFilter} ` : '';
+        const res = await fetchAuth(`/ api / admin / packages${routerQuery} `);
         const pkgs = await res.json();
         const tbody = document.getElementById('packagesTableBody');
         if (tbody) {
@@ -1257,13 +1255,13 @@ async function fetchPackagesList() {
                 const toggleColor = isActive ? '#4caf50' : '#888';
 
                 tbody.innerHTML += `
-                <tr>
-                    <td>
-                        <span>${escapeHtml(p.name)}</span>
-                        <button class="hover-edit-btn" onclick="openEditPackageModal(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.category_id})" title="Edit">
-                            <i class="fas fa-pen"></i>
-                        </button>
-                    </td>
+        < tr >
+        <td>
+            <span>${escapeHtml(p.name)}</span>
+            <button class="hover-edit-btn" onclick="openEditPackageModal(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.category_id})" title="Edit">
+            <i class="fas fa-pen"></i>
+        </button>
+                    </td >
                     <td>${Number(p.price).toLocaleString()} UGX</td>
                     <td>${escapeHtml(p.category_name || '-')}</td>
                     <td>${statusBadge}</td>
@@ -1272,8 +1270,8 @@ async function fetchPackagesList() {
                             <i class="fas ${toggleIcon}"></i>
                         </button>
                     </td>
-                </tr>
-            `;
+                </tr >
+        `;
             });
         }
     } catch (e) {
@@ -1284,7 +1282,7 @@ async function fetchPackagesList() {
 
 async function togglePackageStatus(id) {
     try {
-        const res = await fetchAuth(`/api/admin/packages/${id}/toggle`, {
+        const res = await fetchAuth(`/ api / admin / packages / ${id}/toggle`, {
             method: 'PATCH'
         });
         const data = await res.json();
@@ -1559,12 +1557,12 @@ function renderRouters(routers) {
     routers.forEach(router => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td>${router.name}</td>
+            <td>${escapeHtml(router.name)}</td>
             <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                <a href="${router.mikhmon_url}" target="_blank" style="color: var(--primary-color); text-decoration: none;">${router.mikhmon_url}</a>
+                <a href="${escapeHtml(router.mikhmon_url)}" target="_blank" style="color: var(--primary-color); text-decoration: none;">${escapeHtml(router.mikhmon_url)}</a>
             </td>
             <td>
-                <button class="btn-success btn-sm" onclick="window.open('${router.mikhmon_url}', '_blank')">Manage</button>
+                <button class="btn-success btn-sm" onclick="window.open('${escapeHtml(router.mikhmon_url)}', '_blank')">Manage</button>
                 <button class="btn-cancel btn-sm" onclick="deleteRouter(${router.id})"><i class="fas fa-trash"></i></button>
             </td>
         `;
@@ -1740,4 +1738,17 @@ window.pollPaymentStatus = async function (reference, callback) {
             console.error('Polling Error', e);
         }
     }, 3000); // Poll every 3 seconds
+};
+
+window.performLogout = async function () {
+    console.log('Logging out...');
+    try {
+        await fetchAuth('/api/auth/logout', { method: 'POST' });
+    } catch (e) { console.error('Logout server-side failed', e); }
+
+    localStorage.removeItem('wipay_user');
+    localStorage.removeItem('wipay_role');
+    localStorage.removeItem('wipay_token');
+
+    window.location.href = 'login_dashboard.html';
 };
