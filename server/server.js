@@ -64,10 +64,13 @@ const authLimiter = rateLimit({
 // 2. Security Headers & CORS
 app.use(helmet({
     contentSecurityPolicy: false,
-    crossOriginEmbedderPolicy: false
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false,
+    originAgentCluster: false
 }));
 app.use(cors({
-    origin: process.env.CORS_ORIGIN || "*", // Use env var in production
+    origin: true, // Reflects the request origin, allowing all origins + credentials
+    optionsSuccessStatus: 200,
     credentials: true
 }));
 
@@ -75,6 +78,7 @@ app.use(cors({
 app.use(cookieParser());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, '../client')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // --- Routes ---
 const authRoutes = require('./src/routes/authRoutes');
@@ -105,4 +109,5 @@ io.on('connection', (socket) => {
 // Start Server
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    console.log('--- SERVER RESTARTED: CHECK PAYMENT FIX ACTIVE ---');
 });

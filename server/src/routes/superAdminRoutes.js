@@ -3,16 +3,58 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const db = require('../config/db');
 const { authenticateToken, verifySuperAdmin } = require('../middleware/auth');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+// Configure Multer Storage
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadDir = path.join(__dirname, '../../uploads/resources');
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        // Unique filename: timestamp-original
+        cb(null, Date.now() + '-' + file.originalname.replace(/\s+/g, '_'));
+    }
+});
+const upload = multer({ storage: storage });
 
 // Middleware for all super admin routes
 router.use(authenticateToken);
 router.use(verifySuperAdmin);
 
-// Get All Tenants (Admins)
+// Get All Tenants (Admins) with their routers
 router.get('/tenants', async (req, res) => {
     try {
-        const [admins] = await db.query('SELECT id, username, role, billing_type, subscription_expiry, last_active_at, created_at FROM admins ORDER BY created_at DESC');
-        res.json(admins);
+        const query = `
+            SELECT 
+                a.id, a.username, a.role, a.billing_type, a.subscription_expiry, a.last_active_at, a.created_at,
+                a.email, a.business_name, a.business_phone,
+                JSON_ARRAYAGG(
+                    JSON_OBJECT(
+                        'id', r.id,
+                        'name', r.name,
+                        'mikhmon_url', r.mikhmon_url
+                    )
+                ) as routers
+            FROM admins a
+            LEFT JOIN routers r ON a.id = r.admin_id
+            GROUP BY a.id
+            ORDER BY a.created_at DESC
+        `;
+        const [admins] = await db.query(query);
+
+        // Clean up JSON_ARRAYAGG if no routers (MySQL returns [null] or similar)
+        const cleanedAdmins = admins.map(admin => ({
+            ...admin,
+            routers: (admin.routers && admin.routers[0] && admin.routers[0].id !== null) ? admin.routers : []
+        }));
+
+        res.json(cleanedAdmins);
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server error fetching tenants' });
@@ -87,6 +129,23 @@ router.patch('/tenants/:id/subscription', async (req, res) => {
     }
 });
 
+// Update Tenant Profile
+router.patch('/tenants/:id', async (req, res) => {
+    const tenantId = req.params.id;
+    const { business_name, business_phone, email } = req.body;
+
+    try {
+        await db.query(
+            'UPDATE admins SET business_name = ?, business_phone = ?, email = ? WHERE id = ?',
+            [business_name, business_phone, email, tenantId]
+        );
+        res.json({ message: 'Tenant updated successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to update tenant' });
+    }
+});
+
 // Reset Tenant Password
 router.patch('/tenants/:id/password', async (req, res) => {
     const tenantId = req.params.id;
@@ -125,6 +184,65 @@ router.get('/stats', async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Failed to fetch stats' });
+    }
+});
+
+// --- RESOURCES (FILE UPLOAD) ---
+
+// Upload Resource
+router.post('/resources', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+        const { title, description } = req.body;
+        // Path relative to server root for public access (served via static /uploads)
+        const publicPath = '/uploads/resources/' + req.file.filename;
+
+        await db.query(
+            'INSERT INTO resources (title, file_path, description) VALUES (?, ?, ?)',
+            [title, publicPath, description || '']
+        );
+
+        res.status(201).json({ message: 'File uploaded successfully', file: req.file });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Upload failed' });
+    }
+});
+
+// List Resources
+router.get('/resources', async (req, res) => {
+    try {
+        const [files] = await db.query('SELECT * FROM resources ORDER BY created_at DESC');
+        res.json(files);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to fetch resources' });
+    }
+});
+
+// Delete Resource
+router.delete('/resources/:id', async (req, res) => {
+    const id = req.params.id;
+    try {
+        const [rows] = await db.query('SELECT file_path FROM resources WHERE id = ?', [id]);
+        if (rows.length === 0) return res.status(404).json({ error: 'File not found' });
+
+        const filePath = rows[0].file_path; // e.g., /uploads/resources/filename
+        const absolutePath = path.join(__dirname, '../../', filePath);
+
+        // Remove from DB
+        await db.query('DELETE FROM resources WHERE id = ?', [id]);
+
+        // Remove from Disk
+        if (fs.existsSync(absolutePath)) {
+            fs.unlinkSync(absolutePath);
+        }
+
+        res.json({ message: 'Resource deleted' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Delete failed' });
     }
 });
 

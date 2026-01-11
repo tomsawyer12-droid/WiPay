@@ -12,7 +12,19 @@ const path = require('path');
 const upload = multer({ dest: 'uploads/' });
 
 // Middleware applied to all routes in this file
+// Middleware applied to all routes in this file
 router.use('/admin', authenticateToken);
+
+// --- Resources (Downloads) ---
+router.get('/admin/resources', async (req, res) => {
+    try {
+        const [files] = await db.query('SELECT * FROM resources ORDER BY created_at DESC');
+        res.json(files);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to fetch resources' });
+    }
+});
 
 // --- Categories ---
 router.post('/admin/categories', async (req, res) => {
@@ -93,6 +105,9 @@ router.delete('/admin/categories/:id', async (req, res) => {
             // 3. Delete Vouchers linked to these packages
             const placeholders = packageIds.map(() => '?').join(',');
             await connection.query(`DELETE FROM vouchers WHERE package_id IN (${placeholders})`, packageIds);
+
+            // 3b. Unlink Transactions (Preserve history, but allow package deletion)
+            await connection.query(`UPDATE transactions SET package_id = NULL WHERE package_id IN (${placeholders})`, packageIds);
 
             // 4. Delete Packages
             await connection.query('DELETE FROM packages WHERE category_id = ?', [categoryId]);
@@ -419,6 +434,7 @@ router.post('/admin/buy-sms', async (req, res) => {
         });
 
         const paymentData = await response.json();
+        console.log(`[SMS-PURCHASE] Relworx Response for ${reference}:`, JSON.stringify(paymentData, null, 2));
 
         if (response.ok) {
             res.json({
@@ -536,26 +552,28 @@ router.post('/admin/sell-voucher', async (req, res) => {
         await connection.query('UPDATE vouchers SET is_used = 1, used_by = ?, used_at = NOW() WHERE id = ?', [phone_number, voucher.id]);
 
         // 4. Deduct SMS Cost
-        await connection.query('INSERT INTO sms_fees (admin_id, amount, type, description) VALUES (?, ?, ?, ?)',
+        await connection.query('INSERT INTO sms_fees (admin_id, amount, type, description, status) VALUES (?, ?, ?, ?, "success")',
             [req.user.id, -SMS_COST, 'usage', `Voucher Sale: ${voucher.code}`]);
 
-        // 5. Send SMS (Mock or Real)
-        const message = `Code: ${voucher.code}. Package: ${pkg.name}.`;
-        await sendSMS(phone_number, message);
+        // 5. Send SMS
+        const message = `Code: ${voucher.code}. Package: ${pkg.name}.`
+        const smsSuccess = await sendSMS(phone_number, message, req.user.id);
 
-        // 6. Record SMS Log (if table exists, otherwise skip or ensure it does)
-        // Assuming sms_logs table exists from previous context or generic logging
-        try {
-            await connection.query('INSERT INTO sms_logs (recipient, message, status, admin_id) VALUES (?, ?, ?, ?)',
-                [phone_number, message, 'sent', req.user.id]);
-        } catch (logErr) {
-            console.warn('SMS Log skipped:', logErr.message);
+        if (!smsSuccess) {
+            console.warn(`[SellVoucher] SMS Failed for ${phone_number}`);
+        } else {
+            console.log(`[SellVoucher] SMS Sent to ${phone_number}`);
         }
 
         await connection.commit();
         req.io.emit('data_update', { type: 'vouchers' });
         req.io.emit('data_update', { type: 'sms' });
-        res.json({ message: 'Voucher sold and sent via SMS', voucher: voucher.code });
+
+        // Return success with SMS warnings if any
+        res.json({
+            message: smsSuccess ? 'Voucher sold and sent via SMS' : 'Voucher sold, but SMS failed. Please share code manually.',
+            voucher: voucher
+        });
 
     } catch (err) {
         await connection.rollback();
@@ -588,7 +606,7 @@ router.get('/admin/transactions', async (req, res) => {
     try {
         const { router_id } = req.query;
         let query = `
-            SELECT t.id, t.transaction_ref, t.phone_number, t.amount, t.status, t.payment_method, t.created_at, p.name as package_name, r.name as router_name
+            SELECT t.id, t.transaction_ref, t.phone_number, t.amount, t.status, t.payment_method, t.created_at, t.voucher_code, p.name as package_name, r.name as router_name
             FROM transactions t
             LEFT JOIN packages p ON t.package_id = p.id
             LEFT JOIN routers r ON t.router_id = r.id
@@ -660,6 +678,12 @@ router.get('/admin/analytics/transactions', async (req, res) => {
                 FROM transactions
                 WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual'
                 AND created_at >= DATE_SUB(CURDATE(), INTERVAL 11 MONTH)
+            `;
+            if (req.query.router_id) {
+                query += ' AND router_id = ?';
+                params.push(req.query.router_id);
+            }
+            query += `
                 GROUP BY DATE_FORMAT(created_at, '%b %Y')
                 ORDER BY MIN(created_at) ASC
             `;
@@ -681,13 +705,15 @@ router.get('/admin/stats', async (req, res) => {
     try {
         console.log('DEBUG STATS USER:', req.user.id);
         const { router_id } = req.query;
+        const adminId = req.user.id;
 
-        let whereClause = "WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual'";
-        const params = [req.user.id];
+        // 1. Finance (Filtered vs Global)
+        let financeWhere = "WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual'";
+        const financeParams = [adminId];
 
         if (router_id) {
-            whereClause += " AND router_id = ?";
-            params.push(router_id);
+            financeWhere += " AND router_id = ?";
+            financeParams.push(router_id);
         }
 
         const statsQuery = `
@@ -698,24 +724,57 @@ router.get('/admin/stats', async (req, res) => {
                 COALESCE(SUM(CASE WHEN YEAR(created_at) = YEAR(CURDATE()) THEN (amount - COALESCE(fee,0)) ELSE 0 END), 0) as yearly_revenue,
                 COALESCE(SUM(amount - COALESCE(fee,0)), 0) as total_revenue
             FROM transactions
-            ${whereClause}
+            ${financeWhere}
         `;
 
-        const [transStats] = await db.query(statsQuery, params);
+        const [transStats] = await db.query(statsQuery, financeParams);
 
-        const [withdrawStats] = await db.query('SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals WHERE admin_id = ?', [req.user.id]);
+        // ALWAYS Global Stats (Balance)
+        const [globalRevRows] = await db.query("SELECT COALESCE(SUM(amount - COALESCE(fee, 0)), 0) as rev FROM transactions WHERE admin_id = ? AND status = 'success'", [adminId]);
+        const [withdrawStats] = await db.query('SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals WHERE admin_id = ? AND (status="success" OR status="pending")', [adminId]);
 
-        const adminId = req.user.id;
-        const totalRevenue = Number(transStats[0].total_revenue);
+        const globalRevenue = Number(globalRevRows[0].rev);
         const totalWithdrawn = Number(withdrawStats[0].total_withdrawn);
-        const netBalance = totalRevenue - totalWithdrawn;
+        const netBalance = globalRevenue - totalWithdrawn;
 
-        // 2. Counts
-        const [catCount] = await db.query('SELECT count(*) as count FROM categories WHERE admin_id = ?', [adminId]);
-        const [pkgCount] = await db.query('SELECT count(*) as count FROM packages WHERE admin_id = ?', [adminId]);
-        const [voucherCount] = await db.query('SELECT count(*) as count FROM vouchers WHERE admin_id = ? AND is_used = 0', [adminId]);
-        const [boughtCount] = await db.query('SELECT count(*) as count FROM transactions WHERE admin_id = ? AND status = "success" AND payment_method != "manual" AND transaction_ref NOT LIKE "SMS-%"', [adminId]);
-        const [paymentCount] = await db.query('SELECT count(*) as count FROM transactions WHERE admin_id = ? AND status = "success"', [adminId]);
+        // 2. Counts (Filtered)
+        let countsWhere = "WHERE admin_id = ?";
+        const countsParams = [adminId];
+        if (router_id) {
+            countsWhere += " AND router_id = ?";
+            countsParams.push(router_id);
+        }
+
+        const [catCount] = await db.query(`SELECT count(*) as count FROM categories ${countsWhere}`, countsParams);
+        const [pkgCount] = await db.query(`SELECT count(*) as count FROM packages ${countsWhere}`, countsParams);
+
+        // Vouchers/Transactions use different specific filters
+        let txCountsWhere = "WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual' AND transaction_ref NOT LIKE 'SMS-%' ";
+        const txCountsParams = [adminId];
+        if (router_id) {
+            txCountsWhere += " AND router_id = ?";
+            txCountsParams.push(router_id);
+        }
+
+        const [boughtCount] = await db.query(`SELECT count(*) as count FROM transactions ${txCountsWhere}`, txCountsParams);
+
+        // Vouchers: if router_id is global, we might want to filter by router_id if provided
+        let voucherWhere = "WHERE admin_id = ? AND is_used = 0";
+        const voucherParams = [adminId];
+        if (router_id) {
+            voucherWhere += " AND router_id = ?";
+            voucherParams.push(router_id);
+        }
+        const [voucherCount] = await db.query(`SELECT count(*) as count FROM vouchers ${voucherWhere}`, voucherParams);
+
+        // Payments Count (Filtered)
+        let payCountsWhere = "WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual'";
+        const payCountsParams = [adminId];
+        if (router_id) {
+            payCountsWhere += " AND router_id = ?";
+            payCountsParams.push(router_id);
+        }
+        const [paymentCount] = await db.query(`SELECT count(*) as count FROM transactions ${payCountsWhere}`, payCountsParams);
 
         // 3. Subscription Status
         const [adminInfo] = await db.query('SELECT subscription_expiry FROM admins WHERE id = ?', [adminId]);
@@ -723,8 +782,8 @@ router.get('/admin/stats', async (req, res) => {
         res.json({
             finance: {
                 ...transStats[0],
-                gross_revenue: totalRevenue, // Actual total collected
-                net_balance: netBalance      // Available to withdraw
+                gross_revenue: globalRevenue,
+                net_balance: netBalance
             },
             counts: {
                 categories_count: catCount[0].count,
@@ -734,7 +793,7 @@ router.get('/admin/stats', async (req, res) => {
                 payments_count: paymentCount[0].count
             },
             subscription: {
-                expiry: adminInfo[0].subscription_expiry
+                expiry: adminInfo ? adminInfo[0].subscription_expiry : null
             }
         });
     } catch (err) {
@@ -761,6 +820,7 @@ router.get('/admin/sms-logs', async (req, res) => {
         const [rows] = await db.query('SELECT * FROM sms_logs WHERE admin_id = ? ORDER BY created_at DESC LIMIT 100', [req.user.id]);
         res.json(rows);
     } catch (err) {
+        console.error('Fetch SMS Logs Error:', err);
         res.status(500).json({ error: 'Failed to fetch logs' });
     }
 });

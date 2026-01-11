@@ -22,7 +22,7 @@ router.post('/login', async (req, res) => {
         // Set HttpOnly Cookie
         res.cookie('token', token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production', // Secure in production
+            secure: false, // process.env.NODE_ENV === 'production', // Disabled for HTTP IP access
             sameSite: 'strict',
             maxAge: 24 * 60 * 60 * 1000 // 24 hours
         });

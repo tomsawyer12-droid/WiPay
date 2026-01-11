@@ -54,6 +54,18 @@ async function runPendingMigrations() {
             console.error('Migration Error (Transactions router_id):', err);
         }
     }
+
+    try {
+        // Migration 4: Allow NULL for package_id in transactions (for safe deletion)
+        const alterPackageIdQuery = `
+            ALTER TABLE transactions
+            MODIFY COLUMN package_id INT NULL;
+        `;
+        await db.query(alterPackageIdQuery);
+        console.log('Migration Success: transactions.package_id is now nullable.');
+    } catch (err) {
+        console.error('Migration Error (Transactions package_id):', err);
+    }
 }
 
 module.exports = { runPendingMigrations };

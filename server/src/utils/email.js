@@ -1,5 +1,7 @@
 const nodemailer = require('nodemailer');
 
+const SENDER_EMAIL = process.env.EMAIL_FROM || 'payments@ugpay.tech';
+
 const transporter = nodemailer.createTransport(
     process.env.EMAIL_HOST
         ? {
@@ -27,7 +29,7 @@ async function sendPaymentNotification(toEmail, amount, phone, ref, voucherCode,
     }
 
     const mailOptions = {
-        from: process.env.EMAIL_USER,
+        from: SENDER_EMAIL,
         to: toEmail,
         subject: `Payment Received: ${amount} UGX`,
         html: `
@@ -73,7 +75,7 @@ async function sendSMSPurchaseNotification(toEmail, amount, credits, ref, balanc
     if (!toEmail) return;
 
     const mailOptions = {
-        from: process.env.EMAIL_USER,
+        from: SENDER_EMAIL,
         to: toEmail,
         subject: `SMS Credits Purchased: ${credits} Credits`,
         html: `
@@ -102,7 +104,7 @@ async function sendWithdrawalNotification(toEmail, amount, phone, ref, descripti
     if (!toEmail) return;
 
     const mailOptions = {
-        from: process.env.EMAIL_USER,
+        from: SENDER_EMAIL,
         to: toEmail,
         subject: `Withdrawal Initiated: ${Number(amount).toLocaleString()} UGX`,
         html: `
@@ -132,7 +134,7 @@ async function sendWithdrawalOTP(toEmail, otp, username) {
     if (!toEmail) return;
 
     const mailOptions = {
-        from: process.env.EMAIL_USER,
+        from: SENDER_EMAIL,
         to: toEmail,
         subject: `Start Withdrawal: ${otp}`,
         html: `
@@ -161,7 +163,7 @@ async function sendLowSMSBalanceWarning(toEmail, currentBalance, username) {
     if (!toEmail) return;
 
     const mailOptions = {
-        from: process.env.EMAIL_USER,
+        from: SENDER_EMAIL,
         to: toEmail,
         subject: `ACTION REQUIRED: Low SMS Balance (${currentBalance} Credits)`,
         html: `

@@ -31,11 +31,11 @@ window.fetchAuth = async function (url, options = {}) {
         const res = await fetch(targetUrl, options);
         if (res.status === 401 || res.status === 403) {
             console.warn('Session expired');
-            // Check if we are already on login page to avoid loop?
-            if (!window.location.href.includes('login_dashboard.html')) {
-                window.location.href = 'login_dashboard.html';
-            }
-            throw new Error('Unauthorized');
+            localStorage.removeItem('wipay_token'); // Legacy
+            localStorage.removeItem('wipay_role');  // Clear role to stop login loop
+            localStorage.removeItem('wipay_user');
+            window.location.href = 'login_dashboard.html';
+            return Promise.reject('Unauthorized');
         }
         return res;
     } catch (err) {
@@ -57,7 +57,6 @@ try {
     alert("CRITICAL CONFIG ERROR: " + e.message);
 }
 
-// --- Router Filter Logic ---
 window.onRouterFilterChange = function (routerId) {
     console.log('Router Filter Changed:', routerId);
     currentRouterFilter = routerId;
@@ -68,14 +67,24 @@ window.onRouterFilterChange = function (routerId) {
     if (d1) d1.value = routerId;
     if (d2) d2.value = routerId;
 
-    // Reload active view data
+    // Always reload stats and analytics as they are prominent
+    loadStats();
+    loadAnalytics();
+
+    // Reload list views if they are active
+    const views = {
+        'categoriesView': fetchCategoriesList,
+        'packagesView': fetchPackagesList,
+        'vouchersView': fetchVouchersList,
+        'paymentsView': fetchPaymentsList,
+        'boughtVouchersView': fetchBoughtVouchersList,
+        'smsView': fetchSMSLogs
+    };
+
     const activeView = document.querySelector('.view-section:not(.hidden)');
-    if (activeView) {
-        if (activeView.id === 'dashboardView') loadStats(); // Reload charts/stats
-        if (activeView.id === 'paymentsView') fetchPaymentsList();
+    if (activeView && views[activeView.id]) {
+        views[activeView.id]();
     }
-    // Also reload stats anyway as they are on dashboard view
-    // loadStats(); 
 };
 
 async function fetchRouterFilters() {
@@ -83,15 +92,22 @@ async function fetchRouterFilters() {
         const res = await fetchAuth('/api/admin/routers');
         const routers = await res.json();
 
-        const options = '<option value="">All Routers</option>' +
-            routers.map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
+        if (routers && routers.length > 0) {
+            const options = '<option value="">All Routers</option>' +
+                routers.map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
 
-        const d1 = document.getElementById('routerFilterDashboard');
-        const d2 = document.getElementById('routerFilterTransactions');
+            const d1 = document.getElementById('routerFilterDashboard');
+            const d2 = document.getElementById('routerFilterTransactions');
 
-        if (d1) d1.innerHTML = options;
-        if (d2) d2.innerHTML = options;
+            if (d1) d1.innerHTML = options;
+            if (d2) d2.innerHTML = options;
 
+            // DEFAULT: If no filter is set, pick the first router
+            if (!currentRouterFilter && routers.length > 0) {
+                console.log('Defaulting to first router:', routers[0].id);
+                onRouterFilterChange(routers[0].id);
+            }
+        }
     } catch (e) { console.error('Failed to load router filters', e); }
 }
 
@@ -114,6 +130,8 @@ window.escapeHtml = function (text) {
 // --- GLOBAL NAVIGATION ---
 window.switchView = function (viewName) {
     console.log('Switching to:', viewName);
+    localStorage.setItem('currentView', viewName); // Persist view
+
     // 1. Hide all views
     document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
 
@@ -121,6 +139,12 @@ window.switchView = function (viewName) {
     document.querySelectorAll('.sidebar-nav li').forEach(li => li.classList.remove('active'));
     const activeNavItem = document.querySelector(`.sidebar-nav li[data-view="${viewName}"]`);
     if (activeNavItem) activeNavItem.classList.add('active');
+
+    // Breadcrumb Update
+    const breadcrumb = document.getElementById('breadcrumb');
+    if (breadcrumb) {
+        breadcrumb.innerText = 'Home > ' + viewName.charAt(0).toUpperCase() + viewName.slice(1);
+    }
 
     // 1.6. Update Active Navigation State (Mobile Nav)
     document.querySelectorAll('.mobile-nav-btn').forEach(btn => btn.classList.remove('active'));
@@ -153,6 +177,94 @@ window.switchView = function (viewName) {
     if (viewName === 'sms' && typeof fetchSMSLogs === 'function') fetchSMSLogs();
     if (viewName === 'myTransactions' && typeof fetchMyTransactions === 'function') fetchMyTransactions();
     if (viewName === 'routers' && typeof fetchRouters === 'function') fetchRouters();
+    if (viewName === 'downloads' && typeof fetchDownloadsList === 'function') fetchDownloadsList();
+    if (viewName === 'boughtVouchers' && typeof fetchBoughtVouchersList === 'function') fetchBoughtVouchersList();
+};
+
+// --- Downloads Logic ---
+// --- Downloads Logic ---
+window.fetchDownloadsList = async function () {
+    const tbody = document.getElementById('downloadsTableBody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Fetching...</td></tr>';
+
+    try {
+        const res = await fetchAuth('/api/admin/resources');
+
+        if (!res.ok) {
+            throw new Error('API Error: ' + res.status);
+        }
+
+        const files = await res.json();
+
+        if (!tbody) return;
+        tbody.innerHTML = '';
+
+        if (!Array.isArray(files) || files.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; padding:20px; color:#ccc;">No files available yet.</td></tr>';
+            return;
+        }
+
+        files.forEach(f => {
+            tbody.innerHTML += `
+                <tr>
+                    <td style="color:white; font-weight:500;">${escapeHtml(f.title || 'Untitled')}</td>
+                    <td style="color:#aaa;">${escapeHtml(f.description || '-')}</td>
+                    <td>
+                        <a href="${f.file_path}" download target="_blank" class="btn-submit" style="text-decoration:none; display:inline-block; padding: 6px 12px; font-size: 0.8rem;">Download</a>
+                    </td>
+                </tr>
+            `;
+        });
+    } catch (e) {
+        console.error('Download Error', e);
+        if (tbody) tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:#f44336;">Error loading files: ${e.message}</td></tr>`;
+    }
+};
+
+// --- Bought Vouchers Logic ---
+window.fetchBoughtVouchersList = async function () {
+    const tbody = document.getElementById('boughtVouchersTableBody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Fetching...</td></tr>';
+
+    try {
+        const routerQuery = currentRouterFilter ? `?router_id=${currentRouterFilter}` : '';
+        const res = await fetchAuth(`/api/admin/transactions${routerQuery}`);
+        const allTransactions = await res.json();
+
+        // FILTER: Only successful sales, no manuals, no SMS topups
+        const sales = allTransactions.filter(t =>
+            t.status === 'success' &&
+            t.payment_method !== 'manual' &&
+            !t.transaction_ref.startsWith('SMS-')
+        );
+
+        if (!tbody) return;
+        tbody.innerHTML = '';
+
+        if (sales.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#ccc;">No vouchers sold yet.</td></tr>';
+            return;
+        }
+
+        sales.forEach(t => {
+            tbody.innerHTML += `
+                <tr>
+                    <td style="color:#aaa;">${new Date(t.created_at).toLocaleString()}</td>
+                    <td style="font-weight:500;">${escapeHtml(t.phone_number)}</td>
+                    <td><span class="badge badge-blue">${escapeHtml(t.package_name || 'Unknown')}</span></td>
+                    <td>${t.amount ? t.amount.toLocaleString() : 0}</td>
+                    <!-- Assuming backend sends voucher_code (added in previous step via webhook logic) or we might need to join it in SQL -->
+                    <!-- The transactions API currently does NOT return voucher_code in the SELECT list. I need to check adminRoutes.js Line 609 -->
+                    <!-- Wait, looking back at adminRoutes.js, the SELECT list is: id, transaction_ref, phone_number, amount, status, payment_method, created_at, p.name, r.name. -->
+                    <!-- IT DOES NOT INCLUDE voucher_code. I need to fix that too! -->
+                    <td><span style="font-family:monospace; background:#333; padding:2px 5px; border-radius:4px;">${t.voucher_code ? escapeHtml(t.voucher_code) : 'Auto-Assigned'}</span></td>
+                </tr>
+            `;
+        });
+    } catch (e) {
+        console.error('Bought Vouchers Error', e);
+        if (tbody) tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#f44336;">Error loading data</td></tr>`;
+    }
 };
 
 // --- Sidebar Toggles ---
@@ -397,7 +509,7 @@ function pollPaymentStatus(ref, type, progressBar, actionsDiv) {
         }
 
         try {
-            const res = await fetchAuth(`/ api / admin / payment - status / ${ref} `);
+            const res = await fetchAuth(`/api/admin/payment-status/${ref}`);
             const data = await res.json();
 
             if (data.status === 'success') {
@@ -425,6 +537,9 @@ function pollPaymentStatus(ref, type, progressBar, actionsDiv) {
         } catch (e) { console.error(e); }
     }, 3000);
 }
+
+// Global State
+let currentRouterFilter = "";
 
 // --- Modal Helpers ---
 function openDashModal(id) {
@@ -465,14 +580,14 @@ async function createCategory() {
 
 async function loadCategoriesForSelect() {
     try {
-        const routerQuery = currentRouterFilter !== 'all' ? `? router_id = ${currentRouterFilter} ` : '';
-        const res = await fetchAuth(`/ api / admin / categories${routerQuery} `);
+        const routerQuery = currentRouterFilter !== 'all' ? `?router_id=${currentRouterFilter}` : '';
+        const res = await fetchAuth(`/api/admin/categories${routerQuery}`);
         const cats = await res.json();
         const sel = document.getElementById('pkgCategory');
         if (sel) {
             sel.innerHTML = '<option value="">Select Category</option>';
             cats.forEach(c => {
-                sel.innerHTML += `< option value = "${c.id}" > ${escapeHtml(c.name)}</option > `;
+                sel.innerHTML += `<option value="${c.id}">${escapeHtml(c.name)}</option>`;
             });
         }
     } catch (e) { console.error(e); }
@@ -524,7 +639,7 @@ async function submitEditCategory() {
     if (!name) return showAlert('Name required', 'error');
 
     try {
-        const res = await fetchAuth(`/ api / admin / categories / ${id} `, {
+        const res = await fetchAuth(`/api/admin/categories/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name })
@@ -556,13 +671,14 @@ async function openEditPackageModal(id, name, price, catId) {
     // We can reuse that logic or duplicate it. Let's make a helper.
 
     // Reuse the fetch but target the edit select
-    const res = await fetchAuth('/api/admin/categories');
+    const routerQuery = currentRouterFilter !== 'all' ? `?router_id=${currentRouterFilter}` : '';
+    const res = await fetchAuth(`/api/admin/categories${routerQuery}`);
     const cats = await res.json();
     const sel = document.getElementById('editPkgCategory');
     if (sel) {
         sel.innerHTML = '<option value="">Select Category</option>';
         cats.forEach(c => {
-            sel.innerHTML += `< option value = "${c.id}" ${c.id == catId ? 'selected' : ''}> ${escapeHtml(c.name)}</option > `;
+            sel.innerHTML += `<option value="${c.id}" ${c.id == catId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`;
         });
     }
 
@@ -578,7 +694,7 @@ async function submitEditPackage() {
     if (!name || !price || !catId) return showAlert('All fields required', 'error');
 
     try {
-        const res = await fetchAuth(`/ api / admin / packages / ${id} `, {
+        const res = await fetchAuth(`/api/admin/packages/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, price, category_id: catId })
@@ -595,24 +711,24 @@ async function submitEditPackage() {
 }
 
 async function loadPackagesForImport() {
-    const routerQuery = currentRouterFilter ? `? router_id = ${currentRouterFilter} ` : '';
-    const res = await fetchAuth(`/ api / admin / packages${routerQuery} `);
+    const routerQuery = currentRouterFilter ? `?router_id=${currentRouterFilter}` : '';
+    const res = await fetchAuth(`/api/admin/packages${routerQuery}`);
     const pkgs = await res.json();
     const sel = document.getElementById('importPackageId');
     if (sel) {
         sel.innerHTML = '<option value="">Select Package</option>';
-        pkgs.forEach(p => sel.innerHTML += `< option value = "${p.id}" > ${escapeHtml(p.name)} - ${p.price}</option > `);
+        pkgs.forEach(p => sel.innerHTML += `<option value="${p.id}">${escapeHtml(p.name)} - ${p.price}</option>`);
     }
 }
 
 async function loadPackagesForSell() {
-    const routerQuery = currentRouterFilter ? `? router_id = ${currentRouterFilter} ` : '';
-    const res = await fetchAuth(`/ api / admin / packages${routerQuery} `);
+    const routerQuery = currentRouterFilter ? `?router_id=${currentRouterFilter}` : '';
+    const res = await fetchAuth(`/api/admin/packages${routerQuery}`);
     const pkgs = await res.json();
     const sel = document.getElementById('sellPackageId');
     if (sel) {
         sel.innerHTML = '<option value="">Select Package</option>';
-        pkgs.forEach(p => sel.innerHTML += `< option value = "${p.id}" > ${escapeHtml(p.name)} (${p.price} UGX)</option > `);
+        pkgs.forEach(p => sel.innerHTML += `<option value="${p.id}">${escapeHtml(p.name)} (${p.price} UGX)</option>`);
     }
 }
 
@@ -646,9 +762,9 @@ async function importVouchers() {
 
 // --- Voucher Actions ---
 async function deleteCategory(id, name) {
-    showConfirm(`Delete category "${name}" ? `, async () => {
+    showConfirm(`Delete category "${name}"?`, async () => {
         try {
-            const res = await fetchAuth(`/ api / admin / categories / ${id} `, { method: 'DELETE' });
+            const res = await fetchAuth(`/api/admin/categories/${id}`, { method: 'DELETE' });
             if (res.ok) {
                 showAlert('Category deleted');
                 fetchCategoriesList();
@@ -739,7 +855,7 @@ async function submitSellVoucher() {
             const succMsg = document.getElementById('successMessage');
             if (succMsg) {
                 succMsg.innerHTML = `
-                    Voucher < strong > ${data.voucher.code}</strong > has been sent successfully to < strong > ${escapeHtml(phone)}</strong >.
+                    Voucher <strong>${data.voucher.code}</strong> has been sent successfully to <strong>${escapeHtml(phone)}</strong>.
                 `;
             }
             openDashModal('successModal');
@@ -816,7 +932,7 @@ async function loadStats() {
     try {
         let url = '/api/admin/stats';
         if (typeof currentRouterFilter !== 'undefined' && currentRouterFilter) {
-            url += `? router_id = ${currentRouterFilter} `;
+            url += `?router_id=${currentRouterFilter}`;
         }
         const res = await fetchAuth(url);
         const data = await res.json();
@@ -975,7 +1091,11 @@ function initDashboard() {
 
     // 3. Restore View
     const savedView = localStorage.getItem('currentView') || 'dashboard';
-    switchView(savedView);
+    // Ensure we don't try to switch to a non-existent view validation
+    const validViews = ['dashboard', 'categories', 'packages', 'vouchers', 'payments', 'myTransactions', 'sms', 'routers', 'downloads', 'stats'];
+    const targetView = validViews.includes(savedView) ? savedView : 'dashboard';
+
+    switchView(targetView);
 
     // 4. Listeners
     const nextBtn = document.getElementById('btnWithdrawNext');
@@ -1058,7 +1178,7 @@ function showTableShimmer(tbodyId, colCount) {
         for (let j = 0; j < colCount; j++) {
             cols += '<td><div class="shimmer-line"></div></td>';
         }
-        tbody.innerHTML += `< tr class="shimmer-row" > ${cols}</tr > `;
+        tbody.innerHTML += `<tr class="shimmer-row">${cols}</tr>`;
     }
 }
 
@@ -1077,9 +1197,9 @@ async function loadAnalytics(period = 'weekly') {
     });
 
     try {
-        let url = `/ api / admin / analytics / transactions ? period = ${period} `;
+        let url = `/api/admin/analytics/transactions?period=${period}`;
         if (currentRouterFilter) {
-            url += `& router_id=${currentRouterFilter} `;
+            url += `&router_id=${currentRouterFilter}`;
         }
         const res = await fetchAuth(url);
         const data = await res.json();
@@ -1200,29 +1320,29 @@ window.addEventListener('click', function (e) {
 async function fetchCategoriesList() {
     showTableShimmer('categoriesTableBody', 2);
     try {
-        const routerQuery = currentRouterFilter !== 'all' ? `? router_id = ${currentRouterFilter} ` : '';
-        const res = await fetchAuth(`/ api / admin / categories${routerQuery} `);
+        const routerQuery = currentRouterFilter ? `?router_id=${currentRouterFilter}` : '';
+        const res = await fetchAuth(`/api/admin/categories${routerQuery}`);
         const rows = await res.json();
         const tbody = document.getElementById('categoriesTableBody');
         if (tbody) {
             tbody.innerHTML = '';
 
-            if (rows.length === 0) {
+            if (!Array.isArray(rows) || rows.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; color: #888;">No categories found.</td></tr>';
                 return;
             }
 
             rows.forEach(r => {
                 tbody.innerHTML += `
-        < tr >
+        <tr>
         <td>
             <span>${escapeHtml(r.name)}</span>
             <button class="hover-edit-btn" onclick="openEditCategoryModal(${r.id}, '${r.name.replace(/'/g, "\\'")}')" title="Edit">
             <i class="fas fa-pen"></i>
         </button>
-                    </td >
-        <td><button class="btn-cancel btn-sm" onclick="deleteCategory(${r.id}, '${r.name.replace(/'/g, "\\'")}')">Delete</button></td >
-                </tr >
+                    </td>
+        <td><button class="btn-cancel btn-sm" onclick="deleteCategory(${r.id}, '${r.name.replace(/'/g, "\\'")}')">Delete</button></td>
+                </tr>
         `;
             });
         }
@@ -1232,14 +1352,14 @@ async function fetchCategoriesList() {
 async function fetchPackagesList() {
     showTableShimmer('packagesTableBody', 5);
     try {
-        const routerQuery = currentRouterFilter ? `? router_id = ${currentRouterFilter} ` : '';
-        const res = await fetchAuth(`/ api / admin / packages${routerQuery} `);
+        const routerQuery = currentRouterFilter ? `?router_id=${currentRouterFilter}` : '';
+        const res = await fetchAuth(`/api/admin/packages${routerQuery}`);
         const pkgs = await res.json();
         const tbody = document.getElementById('packagesTableBody');
         if (tbody) {
             tbody.innerHTML = '';
 
-            if (pkgs.length === 0) {
+            if (!Array.isArray(pkgs) || pkgs.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: #888;">No packages found.</td></tr>';
                 return;
             }
@@ -1255,13 +1375,13 @@ async function fetchPackagesList() {
                 const toggleColor = isActive ? '#4caf50' : '#888';
 
                 tbody.innerHTML += `
-        < tr >
+        <tr>
         <td>
             <span>${escapeHtml(p.name)}</span>
             <button class="hover-edit-btn" onclick="openEditPackageModal(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.category_id})" title="Edit">
             <i class="fas fa-pen"></i>
         </button>
-                    </td >
+                    </td>
                     <td>${Number(p.price).toLocaleString()} UGX</td>
                     <td>${escapeHtml(p.category_name || '-')}</td>
                     <td>${statusBadge}</td>
@@ -1270,7 +1390,7 @@ async function fetchPackagesList() {
                             <i class="fas ${toggleIcon}"></i>
                         </button>
                     </td>
-                </tr >
+                </tr>
         `;
             });
         }
@@ -1282,7 +1402,7 @@ async function fetchPackagesList() {
 
 async function togglePackageStatus(id) {
     try {
-        const res = await fetchAuth(`/ api / admin / packages / ${id}/toggle`, {
+        const res = await fetchAuth(`/api/admin/packages/${id}/toggle`, {
             method: 'PATCH'
         });
         const data = await res.json();
@@ -1310,7 +1430,7 @@ async function fetchVouchersList() {
         if (tbody) {
             tbody.innerHTML = '';
 
-            if (vouchers.length === 0) {
+            if (!Array.isArray(vouchers) || vouchers.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; color: #888;">No available vouchers found.</td></tr>';
                 const btn = document.getElementById('btnDeleteVouchers');
                 if (btn) btn.classList.add('hidden');
@@ -1356,13 +1476,14 @@ async function fetchVouchersList() {
 
 async function fetchSMSLogs() {
     try {
-        const res = await fetchAuth('/api/admin/sms-logs');
+        const routerQuery = currentRouterFilter ? `?router_id=${currentRouterFilter}` : '';
+        const res = await fetchAuth(`/api/admin/sms-logs${routerQuery}`);
         const logs = await res.json();
         const tbody = document.getElementById('smsTableBody');
         if (tbody) {
             tbody.innerHTML = '';
 
-            if (logs.length === 0) {
+            if (!Array.isArray(logs) || logs.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: #888;">No SMS logs found.</td></tr>';
                 return;
             }

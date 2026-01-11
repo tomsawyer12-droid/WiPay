@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.socket.io https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data:;">
+        content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.socket.io https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data:; connect-src 'self' https://cdn.socket.io https://cdn.jsdelivr.net;">
     <title>UGPAY - Admin Dashboard</title>
     <link rel="icon" type="image/png" href="img/favicon.png">
     <!-- Google Fonts: Inter -->
@@ -53,7 +53,7 @@
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"
         integrity="sha384-mZLF4UVrpi/QTWPA7BjNPEnkIfRFn4ZEO3Qt/HFklTJBj/gBOV8G3HcKn4NfQblz"
         crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script>
         // Check session via API validation (handled in logic.js) or role presence
         if (!localStorage.getItem('wipay_role')) {
@@ -99,6 +99,8 @@
                 <div class="nav-section">SYSTEM</div>
                 <ul>
                     <li data-view="routers"><a href="#" onclick="switchView('routers'); return false;">Routers</a></li>
+                    <li data-view="downloads"><a href="#" onclick="switchView('downloads'); return false;">Downloads</a>
+                    </li>
                     <li><a href="#" onclick="openDashModal('subscriptionModal'); return false;">Subscription</a></li>
                     <li><a href="#" onclick="showAlert('Web Configs feature coming soon', 'info'); return false;">Web
                             Configs</a></li>
@@ -277,8 +279,8 @@
                     <div class="stat-card blue">
                         <div class="stat-value" id="bought-vouchers">0</div>
                         <div class="stat-label">Bought Vouchers</div>
-                        <div class="card-footer">More info <span class="arrow">→</span></div>
-
+                        <div class="card-footer" onclick="switchView('boughtVouchers')" style="cursor: pointer;">More
+                            info <span class="arrow">→</span></div>
                     </div>
 
                     <!-- Row 3 -->
@@ -417,15 +419,14 @@
 
             <!-- Payments View (Hidden by default) -->
             <div id="paymentsView" class="view-section hidden">
-                <div class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="content-header">
                     <h2>Transaction History</h2>
-                    <select id="routerFilterTransactions"
-                        style="padding: 5px; font-size: 14px; max-width: 150px; border-radius: 6px; border: 1px solid #ddd; outline: none; cursor: pointer; margin-right: 10px;"
+                    <select id="routerFilterTransactions" class="router-filter"
                         onchange="onRouterFilterChange(this.value)">
                         <option value="">All Routers</option>
                         <option disabled>Loading...</option>
                     </select>
-                    <div style="display: flex; gap: 10px;">
+                    <div class="btn-group">
                         <button class="btn-submit" onclick="openDashModal('withdrawModal')"
                             style="background-color: #ff9800;">Withdraw</button>
                         <button class="btn-submit" onclick="fetchPaymentsList()">Refresh</button>
@@ -445,6 +446,30 @@
                             </tr>
                         </thead>
                         <tbody id="paymentsTableBody">
+                            <!-- JS renders rows here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Bought Vouchers View (New) -->
+            <div id="boughtVouchersView" class="view-section hidden">
+                <div class="content-header">
+                    <h2>Bought Vouchers</h2>
+                    <button class="btn-submit" onclick="fetchBoughtVouchersList()">Refresh</button>
+                </div>
+                <div class="table-responsive table-scroll-view">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Time Bought</th>
+                                <th>Phone Number</th>
+                                <th>Package</th>
+                                <th>Amount</th>
+                                <th>Voucher Code</th>
+                            </tr>
+                        </thead>
+                        <tbody id="boughtVouchersTableBody">
                             <!-- JS renders rows here -->
                         </tbody>
                     </table>
@@ -537,6 +562,26 @@
                         <tbody id="myTransactionsTableBody">
                             <!-- JS renders rows here -->
                         </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Downloads View -->
+            <div id="downloadsView" class="view-section hidden">
+                <div class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>Downloads</h2>
+                    <button class="btn-submit" onclick="fetchDownloadsList()">Refresh List</button>
+                </div>
+                <div class="table-responsive table-scroll-view">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>File Name</th>
+                                <th>Description</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="downloadsTableBody"></tbody>
                     </table>
                 </div>
             </div>
@@ -841,7 +886,7 @@
         </button>
     </div>
 
-    <script src="js/config.js"></script>
+    <script src="js/config.js?v=9999"></script>
     <script src="js/dashboard-logic.js?v=9999"></script>
     <script>
         console.log("DASHBOARD HTML LOADED");

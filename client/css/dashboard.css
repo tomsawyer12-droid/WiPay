@@ -122,11 +122,14 @@ body {
 
 .nav-section {
     padding: 24px 24px 8px;
-    font-size: 0.75rem;
-    color: var(--text-muted);
+    font-size: 0.8rem;
+    color: var(--primary-color);
+    /* Highlighted */
     text-transform: uppercase;
-    font-weight: 700;
+    font-weight: 800;
+    /* Bolder */
     letter-spacing: 0.05em;
+    opacity: 0.9;
 }
 
 .sidebar-nav ul {
@@ -1182,4 +1185,71 @@ body.dark-mode .shimmer-line {
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+}
+
+/* --- Responsive Header Fix --- */
+.content-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.router-filter {
+    padding: 8px;
+    font-size: 0.9rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--input-bg);
+    color: var(--text-main);
+    outline: none;
+    cursor: pointer;
+    min-width: 150px;
+    width: auto !important;
+    /* Fix desktop full-width issue */
+}
+
+.content-header .btn-group {
+    display: flex;
+    gap: 10px;
+}
+
+@media (max-width: 768px) {
+    .content-header {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .content-header h2 {
+        display: block;
+        width: 100%;
+        margin-bottom: 5px;
+        text-align: left;
+    }
+
+    /* Filter: Left aligned, natural width, but above buttons */
+    .router-filter {
+        width: auto !important;
+        min-width: 150px;
+        flex-grow: 0;
+        align-self: flex-start;
+        margin-bottom: 5px;
+    }
+
+    /* Buttons: Right aligned on their own row below filter */
+    .content-header .btn-group {
+        width: 100%;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+    }
+
+    .content-header .btn-group button {
+        width: auto !important;
+        flex: 0 0 auto;
+    }
 }

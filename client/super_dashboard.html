@@ -29,6 +29,7 @@
                 <div class="nav-section">MANAGEMENT</div>
                 <ul>
                     <li><a href="#" onclick="switchView('tenants'); return false;">Tenants</a></li>
+                    <li><a href="#" onclick="switchView('resources'); return false;">Resource Center</a></li>
                     <li><a href="#" onclick="switchView('stats'); return false;">System Stats</a></li>
                 </ul>
             </nav>
@@ -71,12 +72,34 @@
                                 <th>Role</th>
                                 <th>Billing</th>
                                 <th>Created At</th>
+                                <th>Router Info</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="tenantsTableBody">
                             <!-- JS renders rows here -->
                         </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Resources View -->
+            <div id="resourcesView" class="view-section hidden">
+                <div class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>Resource Center (File Distribution)</h2>
+                    <button class="btn-success" onclick="openModal('uploadResourceModal')">+ Upload Resource</button>
+                </div>
+                <div class="table-responsive table-scroll-view">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Description</th>
+                                <th>Upload Date</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resourcesTableBody"></tbody>
                     </table>
                 </div>
             </div>
@@ -141,6 +164,22 @@
         </div>
     </div>
 
+    <!-- Upload Resource Modal -->
+    <div id="uploadResourceModal" class="dashboard-modal hidden">
+        <div class="dashboard-modal-content">
+            <h3>Upload Resource</h3>
+            <input type="text" id="resTitle" placeholder="File Title (e.g., Update Script 2.0)"
+                style="width: 100%; padding: 10px; margin-bottom: 10px;">
+            <input type="text" id="resDesc" placeholder="Description (Optional)"
+                style="width: 100%; padding: 10px; margin-bottom: 10px;">
+            <input type="file" id="resFile" style="margin-bottom: 20px;">
+            <div class="modal-actions">
+                <button onclick="uploadResource()" class="btn-success">Upload</button>
+                <button onclick="closeModal('uploadResourceModal')" class="btn-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Renew Subscription Modal -->
     <div id="renewModal" class="dashboard-modal hidden">
         <div class="dashboard-modal-content">
@@ -196,6 +235,57 @@
             <div class="modal-actions">
                 <button onclick="submitResetPassword()" class="btn-warning">Reset Password</button>
                 <button onclick="closeModal('resetPasswordModal')" class="btn-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tenant Details Modal -->
+    <div id="tenantDetailsModal" class="dashboard-modal hidden">
+        <div class="dashboard-modal-content" style="max-width: 600px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 id="detailsTitle" style="margin:0;">Tenant Details</h3>
+                <button onclick="closeModal('tenantDetailsModal')"
+                    style="background:none; border:none; color:#666; font-size:1.5rem; cursor:pointer;">&times;</button>
+            </div>
+
+            <div id="detailsBody">
+                <!-- Populated by JS -->
+            </div>
+
+            <div class="modal-actions" style="margin-top:20px;">
+                <button onclick="closeModal('tenantDetailsModal')" class="btn-cancel">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Tenant Modal -->
+    <div id="editTenantModal" class="dashboard-modal hidden">
+        <div class="dashboard-modal-content">
+            <h3>Edit Tenant</h3>
+            <input type="hidden" id="editTenantId">
+            <div style="margin-bottom:10px;">
+                <label style="color:#aaa; font-size:0.8rem;">Username (Read Only)</label>
+                <input type="text" id="editTenantUser" disabled
+                    style="width: 100%; padding: 10px; background: rgba(255,255,255,0.1); color: #aaa; border: 1px solid #333;">
+            </div>
+            <div style="margin-bottom:10px;">
+                <label style="color:white; font-size:0.8rem;">Business Name</label>
+                <input type="text" id="editTenantBusiness" placeholder="Business Name"
+                    style="width: 100%; padding: 10px;">
+            </div>
+            <div style="margin-bottom:10px;">
+                <label style="color:white; font-size:0.8rem;">Phone</label>
+                <input type="text" id="editTenantPhone" placeholder="Business Phone"
+                    style="width: 100%; padding: 10px;">
+            </div>
+            <div style="margin-bottom:10px;">
+                <label style="color:white; font-size:0.8rem;">Email</label>
+                <input type="email" id="editTenantEmail" placeholder="Email" style="width: 100%; padding: 10px;">
+            </div>
+
+            <div class="modal-actions">
+                <button onclick="submitEditTenant()" class="btn-submit">Save Changes</button>
+                <button onclick="closeModal('editTenantModal')" class="btn-cancel">Cancel</button>
             </div>
         </div>
     </div>
@@ -314,7 +404,95 @@
             document.getElementById(view + 'View').classList.remove('hidden');
 
             if (view === 'tenants') fetchTenants();
+            if (view === 'tenants') fetchTenants();
+            if (view === 'resources') fetchResources();
             if (view === 'stats') fetchStats();
+        }
+
+        // --- Resource Logic ---
+        async function fetchResources() {
+            try {
+                const res = await fetchAuth('/api/super/resources');
+                const data = await res.json();
+                const tbody = document.getElementById('resourcesTableBody');
+                tbody.innerHTML = '';
+
+                data.forEach(item => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>
+                                <a href="${item.file_path}" target="_blank" style="color:white; font-weight:bold; text-decoration:none;">
+                                    ${escapeHtml(item.title)} <span style="font-size:0.8rem;">⬇</span>
+                                </a>
+                            </td>
+                            <td>${escapeHtml(item.description || '-')}</td>
+                            <td>${new Date(item.created_at).toLocaleDateString()}</td>
+                            <td>
+                                <button class="btn-cancel btn-sm" onclick="deleteResource(${item.id})">Delete</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function uploadResource() {
+            const title = document.getElementById('resTitle').value;
+            const desc = document.getElementById('resDesc').value;
+            const fileInput = document.getElementById('resFile');
+
+            if (!title || fileInput.files.length === 0) return showAlert('Title and File needed', 'error');
+
+            const formData = new FormData();
+            formData.append('title', title);
+            formData.append('description', desc);
+            formData.append('file', fileInput.files[0]);
+
+            const btn = document.querySelector('#uploadResourceModal .btn-success');
+            const originalText = btn.textContent;
+            btn.textContent = 'Uploading...';
+            btn.disabled = true;
+
+            try {
+                // Must use plain fetch for FormData to let browser set Content-Type boundary
+                const res = await fetch('/api/super/resources', {
+                    method: 'POST',
+                    body: formData,
+                    // Typically fetchAuth adds JSON headers which breaks multipart. 
+                    // We need to replicate fetchAuth auth check or just rely on cookie.
+                    // Since credentials='include' is default for manual fetch if we set it.
+                });
+                // Wait, super admin uses headers or cookies? fetchAuth uses cookies (credentials:include).
+                // Let's manually do it to avoid fetchAuth defaults (which sets Content-Type: application/json)
+                const res2 = await fetch('/api/super/resources', {
+                    method: 'POST',
+                    body: formData,
+                    // Do NOT set Content-Type header
+                });
+
+                if (res2.ok) {
+                    showAlert('Uploaded!', 'success');
+                    closeModal('uploadResourceModal');
+                    fetchResources();
+                } else {
+                    showAlert('Upload Failed', 'error');
+                }
+            } catch (e) {
+                console.error(e);
+                showAlert('Error', 'error');
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function deleteResource(id) {
+            showConfirm('Delete this file?', async () => {
+                await fetchAuth(`/api/super/resources/${id}`, { method: 'DELETE' });
+                fetchResources();
+            });
         }
 
         // --- Tenant Logic ---
@@ -357,14 +535,84 @@
                             </td>
                             <td>${new Date(t.created_at).toLocaleDateString()}</td>
                             <td>
+                                <button class="btn-submit btn-sm" onclick="openTenantDetails(${t.id})">View Details</button>
+                            </td>
+                            <td>
                                 <div class="actions-cell">
                                     ${t.role !== 'super_admin' ? `<button class="btn-cancel btn-sm" onclick="deleteTenant(${t.id})">Delete</button>` : '<div class="btn-sm"></div>'}
+                                    <button class="btn-warning btn-sm" onclick="openEditModal(${t.id}, '${escapeHtml(t.username)}', '${escapeHtml(t.email || '')}', '${escapeHtml(t.business_name || '')}', '${escapeHtml(t.business_phone || '')}')">Edit</button>
                                     ${t.billing_type === 'subscription' ? `<button class="btn-submit btn-sm" onclick="openRenewModal(${t.id}, '${t.subscription_expiry || ''}')">Renew</button>` : '<div class="btn-sm"></div>'}
                                 </div>
                             </td>
                         </tr>
                     `;
             });
+        }
+
+        function openTenantDetails(id) {
+            const tenant = allTenants.find(t => t.id === id);
+            if (!tenant) return;
+
+            const title = document.getElementById('detailsTitle');
+            const body = document.getElementById('detailsBody');
+
+            title.textContent = `Details for ${tenant.username}`;
+
+            let routersHtml = '';
+            if (tenant.routers && tenant.routers.length > 0) {
+                routersHtml = `
+                    <table class="data-table" style="margin-top:10px; font-size: 0.85rem;">
+                        <thead>
+                            <tr>
+                                <th>Router ID</th>
+                                <th>Name</th>
+                                <th>Mikhmon Link</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tenant.routers.map(r => `
+                                <tr>
+                                    <td>#${r.id}</td>
+                                    <td>${escapeHtml(r.name)}</td>
+                                    <td><a href="${escapeHtml(r.mikhmon_url)}" target="_blank" style="color: var(--primary-color);">Open Mikhmon</a></td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } else {
+                routersHtml = '<p style="color:#888; font-style:italic;">No routers registered for this tenant.</p>';
+            }
+
+            body.innerHTML = `
+                <div style="background: #222; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #333;">
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label style="color:#666; font-size:0.75rem; display:block;">ADMIN ID</label>
+                            <span style="font-weight:bold; color: #fff;">${tenant.id}</span>
+                        </div>
+                        <div>
+                            <label style="color:#666; font-size:0.75rem; display:block;">BUSINESS NAME</label>
+                            <span style="font-weight:bold; color: #fff;">${escapeHtml(tenant.business_name || 'UGPAY')}</span>
+                        </div>
+                        <div>
+                            <label style="color:#666; font-size:0.75rem; display:block;">EMAIL</label>
+                            <span style="font-weight:bold; color: #fff;">${escapeHtml(tenant.email || 'N/A')}</span>
+                        </div>
+                        <div>
+                            <label style="color:#666; font-size:0.75rem; display:block;">PHONE</label>
+                            <span style="font-weight:bold; color: #fff;">${escapeHtml(tenant.business_phone || 'N/A')}</span>
+                        </div>
+                    </div>
+                </div>
+                <h4 style="margin-bottom:10px;">Registered Routers</h4>
+                ${routersHtml}
+                <div style="margin-top:20px; padding:10px; background: #332100; color: #ff9800; border-radius: 6px; font-size: 0.85rem; border: 1px solid #553300;">
+                    <i class="fas fa-info-circle"></i> Use these IDs when configuring the <code>login.html</code> for this tenant's routers.
+                </div>
+            `;
+
+            openModal('tenantDetailsModal');
         }
 
         async function createTenant() {
@@ -483,6 +731,42 @@
                 }
             } catch (e) { console.error(e); }
         }
+
+        // --- Edit Tenant Logic ---
+        function openEditModal(id, username, email, businessName, businessPhone) {
+            document.getElementById('editTenantId').value = id;
+            document.getElementById('editTenantUser').value = username;
+            document.getElementById('editTenantEmail').value = email;
+            document.getElementById('editTenantBusiness').value = businessName;
+            document.getElementById('editTenantPhone').value = businessPhone;
+            openModal('editTenantModal');
+        }
+
+        async function submitEditTenant() {
+            const id = document.getElementById('editTenantId').value;
+            const business_name = document.getElementById('editTenantBusiness').value;
+            const business_phone = document.getElementById('editTenantPhone').value;
+            const email = document.getElementById('editTenantEmail').value;
+
+            try {
+                const res = await fetchAuth(`/api/super/tenants/${id}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ business_name, business_phone, email })
+                });
+
+                if (res.ok) {
+                    showAlert('Tenant Updated', 'success');
+                    closeModal('editTenantModal');
+                    fetchTenants();
+                } else {
+                    showAlert('Update failed', 'error');
+                }
+            } catch (e) {
+                console.error(e);
+                showAlert('Network Error', 'error');
+            }
+        }
+
 
         // --- Password Reset Logic ---
         function openGlobalResetModal() {

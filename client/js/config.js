@@ -1,8 +1,8 @@
 // Production Config
+// For VPS Deployment, we must use the absolute URL if files are on the Router.
+// Use the VPS IP: 84.46.253.72
 const CONFIG = {
-    // Since we are using Nginx to proxy /api -> localhost:5002
-    // We can just use the relative path. This works for IP, Domain, and anything else.
-    API_BASE_URL: '/api'
+    API_BASE_URL: 'https://ugpay.tech/api'
 };
 
 // DEV OVERRIDE (For when you open the file locally on your laptop)

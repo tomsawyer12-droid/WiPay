@@ -319,7 +319,7 @@ header p {
 .info-footer {
     margin-top: 2rem;
     font-size: 0.85rem;
-    color: var(--text-muted);
+    color: var(--text-white);
     line-height: 1.5;
 }
 
@@ -439,9 +439,14 @@ header p {
     right: 20px;
     background: none;
     border: none;
-    color: rgba(255, 255, 255, 0.4);
-    font-size: 1.5rem;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 2rem;
     cursor: pointer;
+    transition: color 0.2s;
+}
+
+.close-modal-btn:hover {
+    color: #ffffff;
 }
 
 /* --- Toast --- */

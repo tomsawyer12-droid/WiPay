@@ -75,4 +75,38 @@ router.post('/connect', (req, res) => {
     }
 });
 
+// Recover Voucher (Public)
+router.post('/recover-voucher', async (req, res) => {
+    const { phone_number, admin_id } = req.body;
+
+    if (!phone_number) return res.status(400).json({ error: 'Phone number required' });
+
+    try {
+        let formattedPhone = phone_number.trim();
+        if (formattedPhone.startsWith('0')) formattedPhone = '+256' + formattedPhone.slice(1);
+        else if (!formattedPhone.startsWith('+')) formattedPhone = '+' + formattedPhone;
+
+        const query = `
+            SELECT t.voucher_code, t.created_at, t.amount, p.name as package_name 
+            FROM transactions t
+            LEFT JOIN packages p ON t.package_id = p.id
+            WHERE t.phone_number = ? 
+            AND t.status = 'success' 
+            AND t.voucher_code IS NOT NULL
+            ${admin_id ? 'AND t.admin_id = ?' : ''}
+            ORDER BY t.created_at DESC 
+            LIMIT 1
+        `;
+
+        const params = admin_id ? [formattedPhone, admin_id] : [formattedPhone];
+        const [rows] = await db.query(query, params);
+
+        res.json(rows);
+    } catch (err) {
+        console.error('Recover Voucher Error:', err);
+        res.status(500).json({ error: 'Failed to search for vouchers' });
+    }
+});
+
 module.exports = router;
+
