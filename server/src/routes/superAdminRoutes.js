@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
+const { exec } = require('child_process');
 const db = require('../config/db');
 const { authenticateToken, verifySuperAdmin } = require('../middleware/auth');
 const multer = require('multer');
@@ -34,6 +35,7 @@ router.get('/tenants', async (req, res) => {
             SELECT 
                 a.id, a.username, a.role, a.billing_type, a.subscription_expiry, a.last_active_at, a.created_at,
                 a.email, a.business_name, a.business_phone,
+                a.vpn_ip, a.vpn_private_key, a.vpn_public_key, a.vpn_server_pub, a.vpn_endpoint,
                 JSON_ARRAYAGG(
                     JSON_OBJECT(
                         'id', r.id,
@@ -84,10 +86,45 @@ router.post('/tenants', async (req, res) => {
         const bName = business_name || 'UGPAY';
         const bPhone = business_phone || null;
 
-        await db.query('INSERT INTO admins (username, password_hash, role, billing_type, email, business_name, business_phone) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        const [result] = await db.query('INSERT INTO admins (username, password_hash, role, billing_type, email, business_name, business_phone) VALUES (?, ?, ?, ?, ?, ?, ?)',
             [username, hash, 'admin', billingType, userEmail, bName, bPhone]);
 
-        res.status(201).json({ message: 'Tenant created successfully' });
+        // AUTOMATION: Create Isolated Mikhmon Instance
+        const scriptPath = path.join(__dirname, '../../create_mikhmon_client.sh');
+        const vpnScriptPath = path.join(__dirname, '../../AUTOMATE_VPN.sh');
+
+        // Sanitize username for folder creation (replace spaces with underscores)
+        const safeUsername = username.replace(/\s+/g, '_');
+
+        // Execute the isolation script. 
+        exec(`bash "${scriptPath}" "${safeUsername}"`, (error, stdout, stderr) => {
+            if (error) console.error(`[MIKHMON-AUTO] Error for ${safeUsername}:`, error);
+            else console.log(`[MIKHMON-AUTO] Success for ${safeUsername}`);
+        });
+
+        // NEW: AUTOMATION: Create VPN Client
+        exec(`bash "${vpnScriptPath}" "${safeUsername}"`, async (error, stdout, stderr) => {
+            if (error) {
+                console.error(`[VPN-AUTO] Error for ${safeUsername}:`, error);
+                return;
+            }
+            try {
+                const vpn = JSON.parse(stdout);
+                if (vpn.vpn_ip) {
+                    await db.query(`
+                        UPDATE admins SET 
+                        vpn_ip = ?, vpn_private_key = ?, vpn_public_key = ?, vpn_server_pub = ?, vpn_endpoint = ? 
+                        WHERE id = ?`,
+                        [vpn.vpn_ip, vpn.vpn_private_key, vpn.vpn_public_key, vpn.vpn_server_pub, vpn.vpn_endpoint, result.insertId]
+                    );
+                    console.log(`[VPN-AUTO] VPN created and stored for ${safeUsername}`);
+                }
+            } catch (e) {
+                console.error(`[VPN-AUTO] Parse Error for ${safeUsername}:`, e, stdout);
+            }
+        });
+
+        res.status(201).json({ message: 'Tenant created successfully. Mikhmon and VPN isolation pending.' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Failed to create tenant' });
@@ -162,6 +199,46 @@ router.patch('/tenants/:id/password', async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Failed to reset password' });
+    }
+});
+
+// Generate VPN for existing tenant
+router.post('/tenants/:id/vpn', async (req, res) => {
+    const tenantId = req.params.id;
+    try {
+        const [rows] = await db.query('SELECT username FROM admins WHERE id = ?', [tenantId]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Tenant not found' });
+
+        const username = rows[0].username;
+        const vpnScriptPath = path.join(__dirname, '../../AUTOMATE_VPN.sh');
+        const safeUsername = username.replace(/\s+/g, '_');
+
+        exec(`bash "${vpnScriptPath}" "${safeUsername}"`, async (error, stdout, stderr) => {
+            if (error) {
+                console.error(`[VPN-AUTO] Error for ${safeUsername}:`, error);
+                return res.status(500).json({ error: 'VPN Script failed', details: stderr });
+            }
+            try {
+                const vpn = JSON.parse(stdout);
+                if (vpn.vpn_ip) {
+                    await db.query(`
+                        UPDATE admins SET 
+                        vpn_ip = ?, vpn_private_key = ?, vpn_public_key = ?, vpn_server_pub = ?, vpn_endpoint = ? 
+                        WHERE id = ?`,
+                        [vpn.vpn_ip, vpn.vpn_private_key, vpn.vpn_public_key, vpn.vpn_server_pub, vpn.vpn_endpoint, tenantId]
+                    );
+                    res.json({ message: 'VPN generated successfully', vpn });
+                } else {
+                    res.status(500).json({ error: 'VPN response was invalid', stdout });
+                }
+            } catch (e) {
+                console.error(`[VPN-AUTO] Parse Error for ${safeUsername}:`, e, stdout);
+                res.status(500).json({ error: 'Failed to parse VPN output', stdout });
+            }
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
     }
 });
 
@@ -243,6 +320,31 @@ router.delete('/resources/:id', async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Delete failed' });
+    }
+});
+
+// --- REGISTRATION REQUESTS ---
+
+// List all registration requests
+router.get('/registration-requests', async (req, res) => {
+    try {
+        const [rows] = await db.query('SELECT * FROM registration_requests ORDER BY created_at DESC');
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to fetch registration requests' });
+    }
+});
+
+// Delete/Reject a registration request
+router.delete('/registration-requests/:id', async (req, res) => {
+    const id = req.params.id;
+    try {
+        await db.query('DELETE FROM registration_requests WHERE id = ?', [id]);
+        res.json({ message: 'Registration request deleted/rejected' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Failed to delete request' });
     }
 });
 

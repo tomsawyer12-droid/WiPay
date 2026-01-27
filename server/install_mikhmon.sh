@@ -5,23 +5,26 @@ echo "Installing PHP and dependencies..."
 apt-get update
 apt-get install -y php-fpm php-common php-mbstring php-xmlrpc php-soap php-gd php-xml php-intl php-mysql php-cli php-zip php-curl unzip
 
-# 2. Setup Mikhmon Directory
-echo "Downloading Mikhmon..."
-MIKHMON_DIR="/var/www/wipay-client/mikhmon"
+# 2. Setup Mikhmon Master Directory
+echo "Downloading Mikhmon Master Template..."
+MIKHMON_DIR="/var/www/wipay-client/mikhmon_master"
 mkdir -p $MIKHMON_DIR
 cd $MIKHMON_DIR
 
 # 3. Download and Unzip
-wget -O mikhmon.zip https://github.com/laksa19/mikhmonv3/archive/refs/heads/master.zip
-unzip -o mikhmon.zip
-# Move contents to current dir
-cp -r mikhmonv3-master/* .
-rm -rf mikhmonv3-master mikhmon.zip
+if [ ! -f "index.php" ]; then
+    wget -O mikhmon.zip https://github.com/laksa19/mikhmonv3/archive/refs/heads/master.zip
+    unzip -o mikhmon.zip
+    cp -r mikhmonv3-master/* .
+    rm -rf mikhmonv3-master mikhmon.zip
+fi
 
 # 4. Set Permissions
 echo "Setting permissions..."
 chown -R www-data:www-data $MIKHMON_DIR
 chmod -R 755 $MIKHMON_DIR
+mkdir -p /var/www/wipay-client/mikhmon
+chown www-data:www-data /var/www/wipay-client/mikhmon
 
 # 5. Detect PHP Version for config
 PHP_SOCK=$(ls /run/php/php*-fpm.sock | head -n 1)

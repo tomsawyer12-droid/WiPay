@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WIPAY | Client Registration</title>
+    <link rel="icon" type="image/png" href="img/favicon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-green: #10b981;
+            --primary-dark: #0f172a;
+            --secondary-dark: #1e293b;
+            --text-light: #f8fafc;
+            --accent-blue: #3b82f6;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: var(--text-light);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 650px;
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 40px 30px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            margin: 20px auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        header h1 {
+            font-weight: 700;
+            font-size: 2rem;
+            letter-spacing: -0.025em;
+            color: var(--primary-green);
+            margin-bottom: 8px;
+        }
+
+        header p {
+            color: #94a3b8;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        form {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+
+        .full-width {
+            grid-column: span 2;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-width: 0;
+            /* Prevent flex overflow */
+        }
+
+        .input-group label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .input-group input,
+        .input-group select,
+        .input-group textarea {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 12px 16px;
+            color: white;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            outline: none;
+            width: 100%;
+        }
+
+        .input-group input:focus,
+        .input-group select:focus,
+        .input-group textarea:focus {
+            border-color: var(--primary-green);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+            background: rgba(15, 23, 42, 0.8);
+        }
+
+        .input-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .helper-text {
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        .captcha-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        #captcha-image {
+            background: #f1f5f9;
+            color: #0f172a;
+            font-weight: 800;
+            font-style: italic;
+            letter-spacing: 5px;
+            padding: 10px 15px;
+            border-radius: 8px;
+            user-select: none;
+            font-size: 1.2rem;
+            min-width: 120px;
+            text-align: center;
+            text-decoration: line-through;
+            flex-shrink: 0;
+        }
+
+        .refresh-captcha {
+            cursor: pointer;
+            color: var(--accent-blue);
+            font-size: 1.1rem;
+            transition: transform 0.3s ease;
+            padding: 5px;
+        }
+
+        .refresh-captcha:hover {
+            transform: rotate(180deg);
+        }
+
+        #captchaInput {
+            flex: 1;
+            min-width: 150px;
+        }
+
+        .submit-btn {
+            background: var(--primary-green);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 16px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .submit-btn:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.4);
+        }
+
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+
+        .submit-btn:disabled {
+            background: #334155;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .footer-note {
+            text-align: center;
+            margin-top: 25px;
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+
+        .footer-note a {
+            color: var(--primary-green);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 30px 20px;
+                border-radius: 15px;
+            }
+
+            form {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+
+            .full-width {
+                grid-column: span 1;
+            }
+
+            header h1 {
+                font-size: 1.75rem;
+            }
+
+            .captcha-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            #captcha-image {
+                width: 100%;
+                text-align: center;
+            }
+
+            .refresh-captcha {
+                text-align: center;
+                padding: 10px;
+            }
+        }
+
+        .status-msg {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: none;
+        }
+
+        .status-msg.success {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            display: block;
+        }
+
+        .status-msg.error {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Join UGPAY</h1>
+            <p>Fill in the form to submit a client registration request. We shall get back to you shortly</p>
+        </header>
+
+        <div id="statusBox" class="status-msg"></div>
+
+        <form id="registrationForm">
+            <div class="input-group">
+                <label for="firstName">First Name</label>
+                <input type="text" id="firstName" name="first_name" placeholder="Enter first name" required>
+            </div>
+            <div class="input-group">
+                <label for="lastName">Last Name</label>
+                <input type="text" id="lastName" name="last_name" placeholder="Enter last name" required>
+            </div>
+
+            <div class="input-group full-width">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" placeholder="Email Address" required>
+            </div>
+
+            <div class="input-group">
+                <label for="phone">Phone Number</label>
+                <input type="tel" id="phone" name="phone_number" placeholder="e.g. 0770000000" pattern="[0-9]{10}"
+                    required>
+                <span class="helper-text">Format: 0700000000 or 0770000000</span>
+            </div>
+            <div class="input-group">
+                <label for="whatsapp">WhatsApp Number</label>
+                <input type="tel" id="whatsapp" name="whatsapp_number" placeholder="WhatsApp Number" pattern="[0-9]{10}"
+                    required>
+                <span class="helper-text">Same format as phone number</span>
+            </div>
+
+            <div class="input-group full-width">
+                <label for="hotspotName">Hotspot Name</label>
+                <input type="text" id="hotspotName" name="hotspot_name" placeholder="Hotspot Name" required>
+            </div>
+
+            <div class="input-group full-width">
+                <label for="careContacts">Customer Care Contacts</label>
+                <input type="text" id="careContacts" name="customer_care_contacts"
+                    placeholder="e.g. 0700000000, 0770000000" required>
+            </div>
+
+            <div class="input-group">
+                <label for="deviceType">Device Type</label>
+                <select id="deviceType" name="device_type">
+                    <option value="Mikrotik">Mikrotik</option>
+                    <option value="Ubiquiti">Ubiquiti</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label for="loginMethod">Login Method</label>
+                <select id="loginMethod" name="login_method">
+                    <option value="Voucher">Voucher (Username = Password)</option>
+                    <option value="Username/Password">Username/Password</option>
+                    <option value="MAC">MAC Authentication</option>
+                </select>
+            </div>
+
+            <div class="input-group full-width">
+                <label for="address">Address</label>
+                <textarea id="address" name="address" placeholder="Address of the client"></textarea>
+            </div>
+
+            <div class="input-group full-width">
+                <label for="systemUsage">System Usage</label>
+                <select id="systemUsage" name="system_usage">
+                    <option value="Billing System">Billing System</option>
+                    <option value="VPN">VPN Only</option>
+                    <option value="Hybrid">Hybrid (VPN + Billing)</option>
+                </select>
+            </div>
+
+            <div class="input-group full-width">
+                <label for="captchaInput">Enter the code in the image</label>
+                <div class="captcha-row">
+                    <div id="captcha-image">----</div>
+                    <i class="fas fa-sync refresh-captcha" onclick="generateCaptcha()"></i>
+                    <input type="text" id="captchaInput" placeholder="Code here" style="flex:1" required>
+                </div>
+            </div>
+
+            <button type="submit" class="submit-btn full-width" id="submitBtn">
+                <span>Submit Request</span>
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </form>
+
+        <div class="footer-note">
+            Already have an account? <a href="login_dashboard.html">Login here</a>
+        </div>
+    </div>
+
+    <script src="js/config.js?v=9999"></script>
+    <script>
+        let currentCaptcha = "";
+
+        // Simple frontend captcha generator for visual mockup
+        // Real logic will be in the backend route
+        function generateCaptcha() {
+            const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            let result = "";
+            for (let i = 0; i < 5; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            currentCaptcha = result;
+            document.getElementById('captcha-image').textContent = result;
+            document.getElementById('captchaInput').value = "";
+        }
+
+        generateCaptcha();
+
+        const form = document.getElementById('registrationForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const statusBox = document.getElementById('statusBox');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const userInput = document.getElementById('captchaInput').value.trim().toUpperCase();
+            if (userInput !== currentCaptcha) {
+                showStatus("Invalid CAPTCHA code. Please try again.", "error");
+                generateCaptcha();
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span>Processing...</span><i class="fas fa-spinner fa-spin"></i>';
+            statusBox.style.display = 'none';
+
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                // We'll create this endpoint soon
+                const response = await fetch(`${CONFIG.API_BASE_URL}/register-request`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showStatus("Success! Your request has been submitted. We'll contact you shortly.", "success");
+                    form.reset();
+                    generateCaptcha();
+                } else {
+                    showStatus(result.error || "Something went wrong. Please try again.", "error");
+                }
+            } catch (err) {
+                showStatus("Network error. Please check your connection.", "error");
+                console.error(err);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<span>Submit Request</span><i class="fas fa-paper-plane"></i>';
+            }
+        });
+
+        function showStatus(msg, type) {
+            statusBox.textContent = msg;
+            statusBox.className = `status-msg ${type}`;
+            statusBox.style.display = 'block';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</body>
+
+</html>

@@ -1,4 +1,6 @@
 console.log("DASHBOARD LOGIC LOADED");
+let currentPackages = [];
+let currentTransactions = [];
 
 // --- Secure Fetch Wrapper (Cookie-based) ---
 window.fetchAuth = async function (url, options = {}) {
@@ -542,11 +544,23 @@ function pollPaymentStatus(ref, type, progressBar, actionsDiv) {
 let currentRouterFilter = "";
 
 // --- Modal Helpers ---
-function openDashModal(id) {
+window.openDashModal = function (id) {
     const el = document.getElementById(id);
     if (el) el.classList.remove('hidden');
     if (id === 'addPackageModal') loadCategoriesForSelect();
-}
+    if (id === 'addRouterModal') {
+        const userStr = localStorage.getItem('wipay_user');
+        if (userStr) {
+            try {
+                const user = JSON.parse(userStr);
+                if (user && user.username && !document.getElementById('routerUrl').value) {
+                    const safeUser = user.username.replace(/\s+/g, '_');
+                    document.getElementById('routerUrl').value = `https://ugpay.tech/mikhmon/${safeUser}/`;
+                }
+            } catch (e) { console.error("Error parsing user for router URL", e); }
+        }
+    }
+};
 
 function closeDashModal(id) {
     const el = document.getElementById(id);
@@ -1350,7 +1364,7 @@ async function fetchCategoriesList() {
 }
 
 async function fetchPackagesList() {
-    showTableShimmer('packagesTableBody', 5);
+    showTableShimmer('packagesTableBody', 6);
     try {
         const routerQuery = currentRouterFilter ? `?router_id=${currentRouterFilter}` : '';
         const res = await fetchAuth(`/api/admin/packages${routerQuery}`);
@@ -1360,11 +1374,13 @@ async function fetchPackagesList() {
             tbody.innerHTML = '';
 
             if (!Array.isArray(pkgs) || pkgs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: #888;">No packages found.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: #888;">No packages found.</td></tr>';
                 return;
             }
 
-            pkgs.forEach(p => {
+            currentPackages = pkgs; // Store for detail view
+
+            pkgs.forEach((p, index) => {
                 const isActive = p.is_active === 1 || p.is_active === true;
                 const statusBadge = isActive
                     ? '<span class="badge bg-success" style="background:#4caf50; color:white; padding:4px 8px; border-radius:4px; font-size:0.8rem;">Active</span>'
@@ -1374,24 +1390,29 @@ async function fetchPackagesList() {
                 const toggleIcon = isActive ? 'fa-toggle-on' : 'fa-toggle-off';
                 const toggleColor = isActive ? '#4caf50' : '#888';
 
+                const count = p.vouchers_count || 0;
+                const countColor = count > 0 ? '#4caf50' : '#f44336';
+                const voucherBadge = `<span style="color: ${countColor}; font-weight: bold;">${count}</span>`;
+
                 tbody.innerHTML += `
-        <tr>
-        <td>
-            <span>${escapeHtml(p.name)}</span>
-            <button class="hover-edit-btn" onclick="openEditPackageModal(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.category_id})" title="Edit">
-            <i class="fas fa-pen"></i>
-        </button>
+                <tr onclick="viewPackageDetails(${index})" style="cursor: pointer;">
+                    <td>
+                        <span>${escapeHtml(p.name)}</span>
+                        <button class="hover-edit-btn" onclick="event.stopPropagation(); openEditPackageModal(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.category_id})" title="Edit">
+                            <i class="fas fa-pen"></i>
+                        </button>
                     </td>
                     <td>${Number(p.price).toLocaleString()} UGX</td>
-                    <td>${escapeHtml(p.category_name || '-')}</td>
-                    <td>${statusBadge}</td>
-                    <td>
-                        <button class="btn-icon" onclick="togglePackageStatus(${p.id})" title="${toggleTitle}" style="background:none; border:none; color:${toggleColor}; font-size:1.2rem; cursor:pointer;">
+                    <td class="mobile-hide">${escapeHtml(p.category_name || '-')}</td>
+                    <td class="mobile-hide">${voucherBadge}</td>
+                    <td class="mobile-hide">${statusBadge}</td>
+                    <td class="mobile-hide">
+                        <button class="btn-icon" onclick="event.stopPropagation(); togglePackageStatus(${p.id})" title="${toggleTitle}" style="background:none; border:none; color:${toggleColor}; font-size:1.2rem; cursor:pointer;">
                             <i class="fas ${toggleIcon}"></i>
                         </button>
                     </td>
                 </tr>
-        `;
+                `;
             });
         }
     } catch (e) {
@@ -1556,7 +1577,48 @@ async function fetchMyTransactions() {
     }
 }
 
+window.viewPackageDetails = function (index) {
+    const data = currentPackages[index];
+    const modal = document.getElementById('packageDetailModal');
+    const content = document.getElementById('packageDetailContent');
+    if (!modal || !content || !data) {
+        console.error('Package Detail Modal components missing or data missing.', { modal, content, data });
+        return;
+    }
+
+    const isActive = data.is_active === 1 || data.is_active === true;
+    const statusColor = isActive ? '#4caf50' : '#f44336';
+    const statusText = isActive ? 'ACTIVE' : 'INACTIVE';
+    const toggleIcon = isActive ? 'fa-toggle-on' : 'fa-toggle-off';
+    const toggleColor = isActive ? '#4caf50' : '#888';
+
+    const count = data.vouchers_count || 0;
+    const countColor = count > 0 ? '#4caf50' : '#f44336';
+
+    content.innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+            <div><strong style="color: #888; font-size: 0.8rem;">PACKAGE NAME</strong><br><span style="font-size: 1rem; font-weight: bold;">${escapeHtml(data.name)}</span></div>
+            <div><strong style="color: #888; font-size: 0.8rem;">STATUS</strong><br><span style="color: ${statusColor}; font-weight: bold;">${statusText}</span></div>
+            <div><strong style="color: #888; font-size: 0.8rem;">PRICE</strong><br>${Number(data.price).toLocaleString()} UGX</div>
+            <div><strong style="color: #888; font-size: 0.8rem;">CATEGORY</strong><br>${escapeHtml(data.category_name || '-')}</div>
+            <div><strong style="color: #888; font-size: 0.8rem;">VOUCHERS REMAINING</strong><br><span style="color: ${countColor}; font-weight: bold;">${count}</span></div>
+            <div><strong style="color: #888; font-size: 0.8rem;">VALIDITY</strong><br>${data.validity_hours} Hours</div>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 20px; padding-top: 20px; border-top: 1px solid #333;">
+            <button class="btn-success" onclick="event.stopPropagation(); closeDashModal('packageDetailModal'); openEditPackageModal(${data.id}, '${data.name.replace(/'/g, "\\'")}', ${data.price}, ${data.category_id})" style="flex: 1; padding: 10px;">
+                <i class="fas fa-pen"></i> Edit
+            </button>
+            <button class="btn-warning" onclick="event.stopPropagation(); togglePackageStatus(${data.id}); closeDashModal('packageDetailModal');" style="flex: 1; padding: 10px; color: white;">
+                <i class="fas ${toggleIcon}"></i> ${isActive ? 'Deactivate' : 'Activate'}
+            </button>
+        </div>
+    `;
+
+    openDashModal('packageDetailModal');
+};
+
 /* loadStats removed - using implementation at line 803 */
+currentTransactions = []; // Store globally for detail view
 
 async function fetchPaymentsList() {
     try {
@@ -1575,19 +1637,21 @@ async function fetchPaymentsList() {
                 return;
             }
 
-            txs.forEach(t => {
+            currentTransactions = txs; // Store it
+
+            txs.forEach((t, index) => {
                 const statusColor = t.status === 'success' ? '#4caf50' : '#f44336';
                 const method = t.payment_method === 'manual' ? '<span class="badge bg-secondary">Manual</span>' : '<span class="badge bg-primary">MoMo</span>';
 
                 tbody.innerHTML += `
-                <tr>
+                <tr onclick="viewTransactionDetails(${index})" style="cursor: pointer;">
                     <td>${new Date(t.created_at).toLocaleString()}</td>
                     <td>${escapeHtml(t.phone_number)}</td>
-                    <td>${Number(t.amount).toLocaleString()} UGX</td>
-                    <td>${escapeHtml(t.package_name || '-')}</td>
-                    <td>${method}</td>
-                    <td style="color: ${statusColor}; font-weight: 500;">${escapeHtml(t.status.toUpperCase())}</td>
-                    <td><small style="color:#aaa">${escapeHtml(t.transaction_ref)}</small></td>
+                    <td class="mobile-hide">${Number(t.amount).toLocaleString()} UGX</td>
+                    <td class="mobile-hide">${escapeHtml(t.package_name || '-')}</td>
+                    <td class="mobile-hide">${method}</td>
+                    <td class="mobile-hide" style="color: ${statusColor}; font-weight: 500;">${escapeHtml(t.status.toUpperCase())}</td>
+                    <td class="mobile-hide"><small style="color:#aaa">${escapeHtml(t.transaction_ref)}</small></td>
                 </tr>
             `;
             });
@@ -1678,18 +1742,102 @@ function renderRouters(routers) {
     routers.forEach(router => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td>${escapeHtml(router.name)}</td>
+            <td>
+                <span>${escapeHtml(router.name)}</span>
+                <button class="hover-edit-btn" onclick="openEditRouterModal(${router.id}, '${router.name.replace(/'/g, "\\'")}', '${router.mikhmon_url.replace(/'/g, "\\'")}')" title="Edit">
+                    <i class="fas fa-pen"></i>
+                </button>
+            </td>
             <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                <a href="${escapeHtml(router.mikhmon_url)}" target="_blank" style="color: var(--primary-color); text-decoration: none;">${escapeHtml(router.mikhmon_url)}</a>
+                <a href="#" onclick="openMikhmon('${escapeHtml(router.mikhmon_url)}'); return false;" style="color: var(--primary-color); text-decoration: none;">${escapeHtml(router.mikhmon_url)}</a>
             </td>
             <td>
-                <button class="btn-success btn-sm" onclick="window.open('${escapeHtml(router.mikhmon_url)}', '_blank')">Manage</button>
+                <button class="btn-success btn-sm" onclick="openMikhmon('${escapeHtml(router.mikhmon_url)}')">Manage</button>
                 <button class="btn-cancel btn-sm" onclick="deleteRouter(${router.id})"><i class="fas fa-trash"></i></button>
             </td>
         `;
         tbody.appendChild(tr);
     });
 }
+
+async function openMikhmon(baseUrl) {
+    // 1. Fetch Auto-Login Token
+    try {
+        const res = await fetchAuth('/api/admin/mikhmon-token');
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.error || 'Auth failed');
+
+        const token = data.token;
+        // 2. Build Redirect URL
+        // Ensure trailing slash
+        let redirectUrl = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+        redirectUrl += `autologin.php?token=${token}`;
+
+        // 3. Open in new tab
+        window.open(redirectUrl, '_blank');
+    } catch (e) {
+        console.error('Mikhmon Auto-Login Error:', e);
+        // Fallback: Open normal link
+        window.open(baseUrl, '_blank');
+    }
+}
+
+window.openMikhmon = openMikhmon;
+
+window.openCheckSiteModal = async function() {
+    openDashModal('checkSiteModal');
+    const list = document.getElementById('checkSiteRouterList');
+    if (list) list.innerHTML = '<div style="text-align: center; color: #aaa; padding: 20px;">Fetching routers...</div>';
+
+    try {
+        const res = await fetchAuth('/api/admin/routers');
+        const routers = await res.json();
+
+        if (list) {
+            if (!routers || routers.length === 0) {
+                list.innerHTML = '<div style="text-align: center; color: #aaa; padding: 20px;">No routers found. Please add one in the Routers section.</div>';
+                return;
+            }
+
+            list.innerHTML = '';
+            routers.forEach(r => {
+                const btn = document.createElement('button');
+                btn.className = 'btn-router-select';
+                btn.style.cssText = `
+                    display: flex; justify-content: space-between; align-items: center;
+                    padding: 14px 20px; background: #2a2a2a; border: 1px solid #333;
+                    border-radius: 10px; color: white; cursor: pointer; text-align: left;
+                    transition: all 0.2s ease;
+                `;
+                btn.onmouseover = () => btn.style.background = '#333';
+                btn.onmouseout = () => btn.style.background = '#2a2a2a';
+                
+                btn.onclick = () => {
+                    closeDashModal('checkSiteModal');
+                    openMikhmon(r.mikhmon_url);
+                };
+
+                btn.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 35px; height: 35px; background: #3b82f6; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                            <i class="fas fa-server" style="font-size: 0.9rem;"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight: 600; font-size: 0.95rem;">${escapeHtml(r.name)}</div>
+                            <div style="font-size: 0.75rem; color: #888; overflow: hidden; text-overflow: ellipsis; max-width: 250px;">${escapeHtml(r.mikhmon_url)}</div>
+                        </div>
+                    </div>
+                    <i class="fas fa-chevron-right" style="color: #444; font-size: 0.8rem;"></i>
+                `;
+                list.appendChild(btn);
+            });
+        }
+    } catch (e) {
+        console.error('Check Site Error:', e);
+        if (list) list.innerHTML = '<div style="text-align: center; color: #f44336; padding: 20px;">Error loading sites.</div>';
+    }
+};
 
 window.submitAddRouter = async function () {
     const name = document.getElementById('routerName').value;
@@ -1732,6 +1880,40 @@ window.deleteRouter = async function (id) {
             fetchRouters();
         } else {
             showAlert('Failed to delete router', 'error');
+        }
+    } catch (e) {
+        console.error(e);
+        showAlert('Network error', 'error');
+    }
+};
+
+window.openEditRouterModal = function (id, name, url) {
+    document.getElementById('editRouterId').value = id;
+    document.getElementById('editRouterName').value = name;
+    document.getElementById('editRouterUrl').value = url;
+    openDashModal('editRouterModal');
+};
+
+window.submitEditRouter = async function () {
+    const id = document.getElementById('editRouterId').value;
+    const name = document.getElementById('editRouterName').value;
+    const url = document.getElementById('editRouterUrl').value;
+
+    if (!name || !url) return showAlert('Please fill in all fields', 'error');
+
+    try {
+        const res = await fetchAuth(`/api/admin/routers/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ name, mikhmon_url: url })
+        });
+
+        if (res.ok) {
+            showAlert('Router updated successfully', 'success');
+            closeDashModal('editRouterModal');
+            fetchRouters();
+        } else {
+            const data = await res.json();
+            showAlert(data.error || 'Update failed', 'error');
         }
     } catch (e) {
         console.error(e);
@@ -1872,4 +2054,37 @@ window.performLogout = async function () {
     localStorage.removeItem('wipay_token');
 
     window.location.href = 'login_dashboard.html';
+};
+
+window.viewTransactionDetails = function (index) {
+    const data = currentTransactions[index];
+    const ref = data.transaction_ref;
+    const modal = document.getElementById('transactionDetailModal');
+    const content = document.getElementById('transactionDetailContent');
+    if (!modal || !content || !data) return;
+
+    let webhookHtml = '<p style="color: #888;">No detailed logs available for this transaction yet.</p>';
+    if (data.webhook_data) {
+        try {
+            const rawData = typeof data.webhook_data === 'string' ? JSON.parse(data.webhook_data) : data.webhook_data;
+            webhookHtml = `<pre style="background: #111; padding: 10px; border-radius: 5px; color: #4caf50; font-size: 0.85rem; overflow-x: auto; max-height: 300px;">${JSON.stringify(rawData, null, 2)}</pre>`;
+        } catch (e) {
+            webhookHtml = `<pre style="background: #111; padding: 10px; border-radius: 5px; color: #f44336; font-size: 0.85rem;">Error parsing logs: ${data.webhook_data}</pre>`;
+        }
+    }
+
+    content.innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+            <div><strong style="color: #888; font-size: 0.8rem;">REFERENCE</strong><br><span style="font-size: 0.9rem;">${escapeHtml(ref)}</span></div>
+            <div><strong style="color: #888; font-size: 0.8rem;">STATUS</strong><br><span style="color: ${data.status === 'success' ? '#4caf50' : '#f44336'}; font-weight: bold;">${data.status.toUpperCase()}</span></div>
+            <div><strong style="color: #888; font-size: 0.8rem;">PHONE</strong><br>${escapeHtml(data.phone_number)}</div>
+            <div><strong style="color: #888; font-size: 0.8rem;">AMOUNT</strong><br>${Number(data.amount).toLocaleString()} UGX</div>
+            <div><strong style="color: #888; font-size: 0.8rem;">PACKAGE</strong><br>${escapeHtml(data.package_name || '-')}</div>
+            <div><strong style="color: #888; font-size: 0.8rem;">DATE</strong><br>${new Date(data.created_at).toLocaleString()}</div>
+        </div>
+        <h4 style="margin-bottom: 10px; font-size: 0.95rem; border-bottom: 1px solid #333; padding-bottom: 8px; color: #fff;">GATEWAY WEBHOOK LOGS</h4>
+        <div style="margin-top: 10px;">${webhookHtml}</div>
+    `;
+
+    modal.classList.remove('hidden');
 };

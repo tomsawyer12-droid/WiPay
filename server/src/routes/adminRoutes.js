@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const db = require('../config/db');
 const { authenticateToken } = require('../middleware/auth');
 const { sendSMS } = require('../utils/sms');
@@ -166,6 +167,28 @@ router.delete('/admin/routers/:id', async (req, res) => {
     }
 });
 
+router.put('/admin/routers/:id', async (req, res) => {
+    const { name, mikhmon_url } = req.body;
+    if (!name || !mikhmon_url) return res.status(400).json({ error: 'Name and URL are required' });
+
+    try {
+        const [result] = await db.query(
+            'UPDATE routers SET name = ?, mikhmon_url = ? WHERE id = ? AND admin_id = ?',
+            [name, mikhmon_url, req.params.id, req.user.id]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Router not found or unauthorized' });
+        }
+
+        req.io.emit('data_update', { type: 'routers' });
+        res.json({ message: 'Router updated successfully' });
+    } catch (err) {
+        console.error('Update Router Error:', err);
+        res.status(500).json({ error: 'Failed to update router' });
+    }
+});
+
 // --- Packages ---
 router.post('/admin/packages', async (req, res) => {
     const { name, price, validity_hours, category_id, data_limit_mb, router_id } = req.body;
@@ -207,7 +230,8 @@ router.get('/admin/packages', async (req, res) => {
     try {
         const router_id = req.query.router_id;
         let query = `
-            SELECT p.id, p.name, p.price, p.validity_hours, p.data_limit_mb, p.is_active, p.created_at, c.name as category_name, p.router_id 
+            SELECT p.id, p.name, p.price, p.validity_hours, p.data_limit_mb, p.is_active, p.created_at, c.name as category_name, p.router_id,
+            (SELECT COUNT(*) FROM vouchers v WHERE v.package_id = p.id AND v.is_used = FALSE) as vouchers_count
             FROM packages p 
             LEFT JOIN categories c ON p.category_id = c.id 
             WHERE p.admin_id = ?
@@ -606,7 +630,7 @@ router.get('/admin/transactions', async (req, res) => {
     try {
         const { router_id } = req.query;
         let query = `
-            SELECT t.id, t.transaction_ref, t.phone_number, t.amount, t.status, t.payment_method, t.created_at, t.voucher_code, p.name as package_name, r.name as router_name
+            SELECT t.id, t.transaction_ref, t.phone_number, t.amount, t.status, t.payment_method, t.created_at, t.voucher_code, t.webhook_data, p.name as package_name, r.name as router_name
             FROM transactions t
             LEFT JOIN packages p ON t.package_id = p.id
             LEFT JOIN routers r ON t.router_id = r.id
@@ -951,6 +975,25 @@ router.get('/admin/subscription-status/:reference', async (req, res) => {
     } catch (err) {
         console.error('Check Subscription Status Error:', err);
         res.status(500).json({ error: 'Failed to check status' });
+    }
+});
+
+// --- MIKHMON AUTO-LOGIN ---
+
+router.get('/admin/mikhmon-token', async (req, res) => {
+    try {
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 60000); // 1 minute expiry
+
+        await db.query(
+            'INSERT INTO mikhmon_tokens (admin_id, token, expires_at) VALUES (?, ?, ?)',
+            [req.user.id, token, expiresAt]
+        );
+
+        res.json({ token });
+    } catch (err) {
+        console.error('Mikhmon Token Error:', err);
+        res.status(500).json({ error: 'Failed to generate access token' });
     }
 });
 

@@ -110,7 +110,7 @@ router.post('/webhook', async (req, res) => {
     // --- HANDLE SMS TOPUP (SMS- Prefix) ---
     if (reference.startsWith('SMS-')) {
         if (status === 'success' || status === 'successful') {
-            await db.query('UPDATE sms_fees SET status = "success" WHERE reference = ?', [reference]);
+            await db.query('UPDATE sms_fees SET status = "success", webhook_data = ? WHERE reference = ?', [JSON.stringify(data), reference]);
             console.log(`[WEBHOOK] SMS Topup Successful: ${reference}`);
 
             // Email Notification
@@ -163,7 +163,7 @@ router.post('/webhook', async (req, res) => {
                     if (admins.length > 0 && admins[0].billing_type === 'commission') {
                         feeMs = tx.amount * 0.05;
                     }
-                    await db.query('UPDATE transactions SET status = "success", fee = ? WHERE transaction_ref = ?', [feeMs, reference]);
+                    await db.query('UPDATE transactions SET status = "success", fee = ?, webhook_data = ? WHERE transaction_ref = ?', [feeMs, JSON.stringify(data), reference]);
 
                     // Notify Payments Update
                     req.io.emit('data_update', { type: 'payments' });
@@ -239,7 +239,7 @@ router.post('/webhook', async (req, res) => {
                         await db.query('UPDATE vouchers SET is_used = TRUE WHERE id = ?', [voucher.id]);
                         // NO SMS FEE DEDUCTION
 
-                        await db.query('UPDATE transactions SET status = "success", fee = ?, voucher_code = ? WHERE transaction_ref = ?', [feeMs, voucher.code, reference]);
+                        await db.query('UPDATE transactions SET status = "success", fee = ?, voucher_code = ?, webhook_data = ? WHERE transaction_ref = ?', [feeMs, voucher.code, JSON.stringify(data), reference]);
 
                         req.io.emit('data_update', { type: 'vouchers' });
                         req.io.emit('data_update', { type: 'payments' });
@@ -268,7 +268,7 @@ router.post('/webhook', async (req, res) => {
             res.status(500).send('Server Error');
         }
     } else if (status === 'failed') {
-        await db.query('UPDATE transactions SET status = "failed" WHERE transaction_ref = ?', [reference]);
+        await db.query('UPDATE transactions SET status = "failed", webhook_data = ? WHERE transaction_ref = ?', [JSON.stringify(data), reference]);
         console.log(`[WEBHOOK] Transaction failed: ${reference}`);
         res.status(200).send('OK');
     } else {
@@ -337,7 +337,7 @@ router.post('/check-payment-status', async (req, res) => {
             if (isSMS) {
                 // --- SMS SUCCESS LOGIC ---
                 console.log('[POLL] SMS Success. Updating DB...');
-                await db.query('UPDATE sms_fees SET status = "success" WHERE reference = ?', [transaction_ref]);
+                await db.query('UPDATE sms_fees SET status = "success", webhook_data = ? WHERE reference = ?', [JSON.stringify(data), transaction_ref]);
                 req.io.emit('data_update', { type: 'sms' });
                 req.io.emit('data_update', { type: 'sms_logs' });
                 // Notify by email
@@ -359,7 +359,7 @@ router.post('/check-payment-status', async (req, res) => {
                 const [packages] = await db.query('SELECT * FROM packages WHERE id = ?', [tx.package_id]);
                 if (packages.length === 0) {
                     // Should not happen, but safe fallback
-                    await db.query('UPDATE transactions SET status = "success" WHERE transaction_ref = ?', [transaction_ref]);
+                    await db.query('UPDATE transactions SET status = "success", webhook_data = ? WHERE transaction_ref = ?', [JSON.stringify(data), transaction_ref]);
                     return res.json({ status: 'SUCCESS' });
                 }
                 const pkg = packages[0];
@@ -377,7 +377,7 @@ router.post('/check-payment-status', async (req, res) => {
                         feeMs = tx.amount * 0.05;
                     }
 
-                    await db.query('UPDATE transactions SET status = "success", fee = ? WHERE transaction_ref = ?', [feeMs, transaction_ref]);
+                    await db.query('UPDATE transactions SET status = "success", fee = ?, webhook_data = ? WHERE transaction_ref = ?', [feeMs, JSON.stringify(data), transaction_ref]);
 
                     // Assign Voucher
                     const [availableVouchers] = await db.query('SELECT * FROM vouchers WHERE package_id = ? AND is_used = FALSE LIMIT 1', [tx.package_id]);
@@ -432,7 +432,7 @@ router.post('/check-payment-status', async (req, res) => {
                         await db.query('UPDATE vouchers SET is_used = TRUE WHERE id = ?', [voucher.id]);
                         // NO SMS FEE DEDUCTION
 
-                        await db.query('UPDATE transactions SET status = "success", fee = ?, voucher_code = ? WHERE transaction_ref = ?', [feeMs, voucher.code, transaction_ref]);
+                        await db.query('UPDATE transactions SET status = "success", fee = ?, voucher_code = ?, webhook_data = ? WHERE transaction_ref = ?', [feeMs, voucher.code, JSON.stringify(data), transaction_ref]);
 
                         req.io.emit('data_update', { type: 'vouchers' });
                         req.io.emit('data_update', { type: 'payments' });
@@ -452,7 +452,7 @@ router.post('/check-payment-status', async (req, res) => {
                         return res.json({ status: 'SUCCESS', voucher_code: voucher.code });
                     } else {
                         console.error(`[POLL] No vouchers available for ${transaction_ref}`);
-                        await db.query('UPDATE transactions SET status = "failed" WHERE transaction_ref = ?', [transaction_ref]);
+                        await db.query('UPDATE transactions SET status = "failed", webhook_data = ? WHERE transaction_ref = ?', [JSON.stringify(data), transaction_ref]);
                         return res.json({ status: 'FAILED' });
                     }
                 }
@@ -461,8 +461,8 @@ router.post('/check-payment-status', async (req, res) => {
 
         if (isFailed) {
             console.log('[POLL] Gateway says FAILED');
-            if (isSMS) await db.query('UPDATE sms_fees SET status = "failed" WHERE reference = ?', [transaction_ref]);
-            else await db.query('UPDATE transactions SET status = "failed" WHERE transaction_ref = ?', [transaction_ref]);
+            if (isSMS) await db.query('UPDATE sms_fees SET status = "failed", webhook_data = ? WHERE reference = ?', [JSON.stringify(data), transaction_ref]);
+            else await db.query('UPDATE transactions SET status = "failed", webhook_data = ? WHERE transaction_ref = ?', [JSON.stringify(data), transaction_ref]);
             return res.json({ status: 'FAILED' });
         }
 

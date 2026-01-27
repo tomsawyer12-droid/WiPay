@@ -29,6 +29,7 @@
                 <div class="nav-section">MANAGEMENT</div>
                 <ul>
                     <li><a href="#" onclick="switchView('tenants'); return false;">Tenants</a></li>
+                    <li><a href="#" onclick="switchView('requests'); return false;">Registration Requests</a></li>
                     <li><a href="#" onclick="switchView('resources'); return false;">Resource Center</a></li>
                     <li><a href="#" onclick="switchView('stats'); return false;">System Stats</a></li>
                 </ul>
@@ -130,6 +131,30 @@
                         <div class="stat-value" id="total-subscriptions">0</div>
                         <div class="stat-label">Total Subscriptions</div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Registration Requests View -->
+            <div id="requestsView" class="view-section hidden">
+                <div class="content-header">
+                    <h2>Registration Requests (Leads)</h2>
+                </div>
+                <div class="table-responsive table-scroll-view">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Name</th>
+                                <th>Contact</th>
+                                <th>Hotspot/Address</th>
+                                <th>System/Method</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="requestsTableBody">
+                            <!-- JS renders rows -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
@@ -401,12 +426,87 @@
         function switchView(view) {
             document.getElementById('tenantsView').classList.add('hidden');
             document.getElementById('statsView').classList.add('hidden');
+            document.getElementById('resourcesView').classList.add('hidden');
+            document.getElementById('requestsView').classList.add('hidden');
+
             document.getElementById(view + 'View').classList.remove('hidden');
 
             if (view === 'tenants') fetchTenants();
-            if (view === 'tenants') fetchTenants();
             if (view === 'resources') fetchResources();
             if (view === 'stats') fetchStats();
+            if (view === 'requests') fetchRegistrationRequests();
+        }
+
+        // --- Registration Requests Logic ---
+        async function fetchRegistrationRequests() {
+            try {
+                const res = await fetchAuth('/api/super/registration-requests');
+                const data = await res.json();
+                const tbody = document.getElementById('requestsTableBody');
+                tbody.innerHTML = '';
+
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#888;">No pending requests.</td></tr>';
+                    return;
+                }
+
+                data.forEach(r => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${new Date(r.created_at).toLocaleDateString()}</td>
+                            <td>
+                                <strong>${escapeHtml(r.first_name)} ${escapeHtml(r.last_name)}</strong><br>
+                                <small style="color:#aaa">${escapeHtml(r.email)}</small>
+                            </td>
+                            <td>
+                                <div><i class="fas fa-phone"></i> ${escapeHtml(r.phone_number)}</div>
+                                <div style="color:#25D366"><i class="fab fa-whatsapp"></i> ${escapeHtml(r.whatsapp_number)}</div>
+                            </td>
+                            <td>
+                                <strong>${escapeHtml(r.hotspot_name)}</strong><br>
+                                <small style="color:#aaa">${escapeHtml(r.address || '-')}</small>
+                            </td>
+                            <td>
+                                <div class="badge bg-primary">${escapeHtml(r.system_usage)}</div>
+                                <div style="font-size:0.8rem; color:#888;">${escapeHtml(r.login_method)}</div>
+                            </td>
+                            <td>
+                                <div class="actions-cell">
+                                    <button class="btn-success btn-sm" onclick="approveRequest(${r.id}, '${escapeHtml(r.first_name)} ${escapeHtml(r.last_name)}', '${escapeHtml(r.email)}', '${escapeHtml(r.phone_number)}', '${escapeHtml(r.hotspot_name)}')">Convert to Tenant</button>
+                                    <button class="btn-cancel btn-sm" onclick="rejectRequest(${r.id})">Reject</button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        function approveRequest(id, name, email, phone, business) {
+            // Pre-fill the Add Tenant modal with lead data
+            document.getElementById('newTenantUser').value = name.replace(/\s+/g, '').toLowerCase() + Math.floor(Math.random() * 100);
+            document.getElementById('newTenantEmail').value = email;
+            document.getElementById('newTenantBusiness').value = business;
+            document.getElementById('newTenantPhone').value = phone;
+
+            // Show message and open modal
+            showAlert('Lead data copied. Please set a password and create the tenant.', 'success');
+            openModal('addTenantModal');
+
+            // We keep the request for now, or we could delete it upon successful tenant creation.
+            // For now, let's just make it easy to copy.
+        }
+
+        async function rejectRequest(id) {
+            showConfirm('Are you sure you want to reject/delete this lead?', async () => {
+                try {
+                    const res = await fetchAuth(`/api/super/registration-requests/${id}`, { method: 'DELETE' });
+                    if (res.ok) {
+                        fetchRegistrationRequests();
+                        showAlert('Lead removed.', 'success');
+                    }
+                } catch (e) { console.error(e); }
+            });
         }
 
         // --- Resource Logic ---
@@ -603,12 +703,31 @@
                             <label style="color:#666; font-size:0.75rem; display:block;">PHONE</label>
                             <span style="font-weight:bold; color: #fff;">${escapeHtml(tenant.business_phone || 'N/A')}</span>
                         </div>
+                        <div style="grid-column: span 2; margin-top: 10px; border-top: 1px solid #333; padding-top: 10px;">
+                            <label style="color:#666; font-size:0.75rem; display:block;">ISOLATED MIKHMON DIR (FOR NEW ROUTERS)</label>
+                            <a href="https://ugpay.tech/mikhmon/${tenant.username.replace(/\s+/g, '_')}/" target="_blank" style="color:var(--primary-color); font-weight:bold;">https://ugpay.tech/mikhmon/${tenant.username.replace(/\s+/g, '_')}/</a>
+                        </div>
+                        <div style="grid-column: span 2; margin-top: 10px; border-top: 1px solid #333; padding-top: 10px;">
+                            <label style="color:#ff9800; font-size:0.75rem; display:block; font-weight: bold; margin-bottom: 5px;">WIREGUARD VPN SETTINGS (FOR MIKROTIK)</label>
+                            ${tenant.vpn_ip ? `
+                                <div style="background: #111; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 0.85rem; border: 1px solid #444;">
+                                    <div style="margin-bottom: 5px;"><span style="color: #888;">VPN IP:</span> <span style="color: #4caf50;">${tenant.vpn_ip}</span></div>
+                                    <div style="margin-bottom: 5px;"><span style="color: #888;">Private Key:</span> <small style="color: #eee; word-break: break-all;">${tenant.vpn_private_key}</small></div>
+                                    <div style="margin-bottom: 5px;"><span style="color: #888;">Public Key:</span> <small style="color: #eee; word-break: break-all;">${tenant.vpn_public_key}</small></div>
+                                    <div style="margin-bottom: 5px;"><span style="color: #888;">Server Public Key:</span> <small style="color: #eee; word-break: break-all;">${tenant.vpn_server_pub}</small></div>
+                                    <div><span style="color: #888;">Endpoint:</span> <span style="color: #3b82f6;">${tenant.vpn_endpoint}:51820</span></div>
+                                </div>
+                            ` : `<span style="color: #f44336; font-size: 0.85rem;">No VPN created for this tenant yet.</span>`}
+                        </div>
                     </div>
                 </div>
                 <h4 style="margin-bottom:10px;">Registered Routers</h4>
                 ${routersHtml}
-                <div style="margin-top:20px; padding:10px; background: #332100; color: #ff9800; border-radius: 6px; font-size: 0.85rem; border: 1px solid #553300;">
-                    <i class="fas fa-info-circle"></i> Use these IDs when configuring the <code>login.html</code> for this tenant's routers.
+                <div style="margin-top:20px; padding:15px; background: #332100; color: #ff9800; border-radius: 6px; font-size: 0.85rem; border: 1px solid #553300;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span><i class="fas fa-info-circle"></i> Use these IDs when configuring the <code>login.html</code> for this tenant's routers.</span>
+                        <button class="btn-success btn-sm" style="background:#ff9800; border:none;" onclick="generateVPN(${tenant.id})">Generate / Refresh VPN</button>
+                    </div>
                 </div>
             `;
 
@@ -815,6 +934,31 @@
                 btn.textContent = originalText;
                 btn.disabled = false;
                 btn.style.opacity = '1';
+            }
+        }
+
+        async function generateVPN(id) {
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = 'Generating...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetchAuth(`/api/super/tenants/${id}/vpn`, { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    showAlert('VPN generated successfully!', 'success');
+                    fetchTenants(); // Refresh list
+                    setTimeout(() => openTenantDetails(id), 500); // Re-open details to show new keys
+                } else {
+                    showAlert(data.error || 'Failed to generate VPN', 'error');
+                }
+            } catch (e) {
+                console.error(e);
+                showAlert('Network error', 'error');
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
             }
         }
 

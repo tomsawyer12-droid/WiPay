@@ -86,6 +86,7 @@ const adminRoutes = require('./src/routes/adminRoutes');
 const paymentRoutes = require('./src/routes/paymentRoutes');
 const publicRoutes = require('./src/routes/publicRoutes');
 const superAdminRoutes = require('./src/routes/superAdminRoutes');
+const registrationRoutes = require('./src/routes/registrationRoutes');
 
 // Apply Limiters
 app.use('/api', globalLimiter);
@@ -95,6 +96,7 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api', authRoutes);
 app.use('/api', publicRoutes);
 app.use('/api', paymentRoutes);
+app.use('/api', registrationRoutes);
 app.use('/api/super', superAdminRoutes);
 app.use('/api', adminRoutes);
 
