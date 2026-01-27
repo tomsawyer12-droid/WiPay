@@ -1,6 +1,8 @@
 console.log("DASHBOARD LOGIC LOADED");
 let currentPackages = [];
 let currentTransactions = [];
+let currentMyTransactions = [];
+let currentBoughtVouchers = [];
 
 // --- Secure Fetch Wrapper (Cookie-based) ---
 window.fetchAuth = async function (url, options = {}) {
@@ -240,6 +242,8 @@ window.fetchBoughtVouchersList = async function () {
             !t.transaction_ref.startsWith('SMS-')
         );
 
+        currentBoughtVouchers = sales; // Store for detail view
+
         if (!tbody) return;
         tbody.innerHTML = '';
 
@@ -248,17 +252,13 @@ window.fetchBoughtVouchersList = async function () {
             return;
         }
 
-        sales.forEach(t => {
+        sales.forEach((t, index) => {
             tbody.innerHTML += `
-                <tr>
-                    <td style="color:#aaa;">${new Date(t.created_at).toLocaleString()}</td>
+                <tr onclick="viewGenericDetails('boughtVouchers', ${index})" style="cursor: pointer;">
+                    <td class="mobile-hide" style="color:#aaa;">${new Date(t.created_at).toLocaleString()}</td>
                     <td style="font-weight:500;">${escapeHtml(t.phone_number)}</td>
-                    <td><span class="badge badge-blue">${escapeHtml(t.package_name || 'Unknown')}</span></td>
-                    <td>${t.amount ? t.amount.toLocaleString() : 0}</td>
-                    <!-- Assuming backend sends voucher_code (added in previous step via webhook logic) or we might need to join it in SQL -->
-                    <!-- The transactions API currently does NOT return voucher_code in the SELECT list. I need to check adminRoutes.js Line 609 -->
-                    <!-- Wait, looking back at adminRoutes.js, the SELECT list is: id, transaction_ref, phone_number, amount, status, payment_method, created_at, p.name, r.name. -->
-                    <!-- IT DOES NOT INCLUDE voucher_code. I need to fix that too! -->
+                    <td class="mobile-hide"><span class="badge badge-blue">${escapeHtml(t.package_name || 'Unknown')}</span></td>
+                    <td class="mobile-hide">${t.amount ? t.amount.toLocaleString() : 0}</td>
                     <td><span style="font-family:monospace; background:#333; padding:2px 5px; border-radius:4px;">${t.voucher_code ? escapeHtml(t.voucher_code) : 'Auto-Assigned'}</span></td>
                 </tr>
             `;
@@ -1541,7 +1541,9 @@ async function fetchMyTransactions() {
                 return;
             }
 
-            rows.forEach(r => {
+            currentMyTransactions = rows; // Store for detail view
+
+            rows.forEach((r, index) => {
                 let typeBadge = '';
                 // Amount color ignored, hardcoded to white as requested
                 let amountColor = '#ffffff';
@@ -1560,13 +1562,13 @@ async function fetchMyTransactions() {
                 else if (r.status === 'pending') statusColor = '#ff9800';
 
                 tbody.innerHTML += `
-                <tr>
+                <tr onclick="viewGenericDetails('myTransactions', ${index})" style="cursor: pointer;">
                     <td>${new Date(r.created_at).toLocaleString()}</td>
-                    <td>${typeBadge}</td>
+                    <td class="mobile-hide">${typeBadge}</td>
                     <td style="color: #ffffff; font-weight: bold;">${Number(r.amount).toLocaleString()} UGX</td>
-                    <td style="color: ${statusColor}; font-weight: 500;">${escapeHtml((r.status || 'success').toUpperCase())}</td>
-                    <td>${escapeHtml(r.description || '-')}</td>
-                    <td><small style="color:#aaa">${escapeHtml(r.reference || '-')}</small></td>
+                    <td class="mobile-hide" style="color: ${statusColor}; font-weight: 500;">${escapeHtml((r.status || 'success').toUpperCase())}</td>
+                    <td class="mobile-hide">${escapeHtml(r.description || '-')}</td>
+                    <td class="mobile-hide"><small style="color:#aaa">${escapeHtml(r.reference || '-')}</small></td>
                 </tr>
             `;
             });
@@ -1618,6 +1620,54 @@ window.viewPackageDetails = function (index) {
 };
 
 /* loadStats removed - using implementation at line 803 */
+window.viewGenericDetails = function (type, index) {
+    let data;
+    let title = 'Details';
+    let html = '';
+
+    if (type === 'myTransactions') {
+        data = currentMyTransactions[index];
+        title = 'Transaction Details';
+        if (data) {
+            const statusColor = data.status === 'success' ? '#4caf50' : (data.status === 'pending' ? '#ff9800' : '#f44336');
+            html = `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div><strong style="color: #888; font-size: 0.8rem;">TYPE</strong><br>${escapeHtml(data.type)}</div>
+                    <div><strong style="color: #888; font-size: 0.8rem;">DATE</strong><br>${new Date(data.created_at).toLocaleString()}</div>
+                    <div><strong style="color: #888; font-size: 0.8rem;">AMOUNT</strong><br>${Number(data.amount).toLocaleString()} UGX</div>
+                    <div><strong style="color: #888; font-size: 0.8rem;">STATUS</strong><br><span style="color: ${statusColor}; font-weight: bold;">${data.status.toUpperCase()}</span></div>
+                    <div style="grid-column: span 2;"><strong style="color: #888; font-size: 0.8rem;">DESCRIPTION</strong><br>${escapeHtml(data.description || '-')}</div>
+                    <div style="grid-column: span 2;"><strong style="color: #888; font-size: 0.8rem;">REFERENCE</strong><br><small style="color: #aaa;">${escapeHtml(data.reference || '-')}</small></div>
+                </div>
+            `;
+        }
+    } else if (type === 'boughtVouchers') {
+        data = currentBoughtVouchers[index];
+        title = 'Voucher Details';
+        if (data) {
+            html = `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div><strong style="color: #888; font-size: 0.8rem;">VOUCHER CODE</strong><br><span style="font-size: 1.1rem; font-weight: bold; color: #03a9f4;">${escapeHtml(data.voucher_code || 'Auto-Assigned')}</span></div>
+                    <div><strong style="color: #888; font-size: 0.8rem;">PHONE</strong><br>${escapeHtml(data.phone_number)}</div>
+                    <div><strong style="color: #888; font-size: 0.8rem;">PACKAGE</strong><br>${escapeHtml(data.package_name || '-')}</div>
+                    <div><strong style="color: #888; font-size: 0.8rem;">AMOUNT</strong><br>${Number(data.amount).toLocaleString()} UGX</div>
+                    <div><strong style="color: #888; font-size: 0.8rem;">TIME BOUGHT</strong><br>${new Date(data.created_at).toLocaleString()}</div>
+                    <div><strong style="color: #888; font-size: 0.8rem;">REF</strong><br><small style="color: #aaa;">${escapeHtml(data.transaction_ref)}</small></div>
+                </div>
+            `;
+        }
+    }
+
+    const modal = document.getElementById('genericDetailModal');
+    const content = document.getElementById('genericDetailContent');
+    const titleEl = document.getElementById('genericDetailTitle');
+
+    if (modal && content && titleEl) {
+        titleEl.innerText = title;
+        content.innerHTML = html;
+        openDashModal('genericDetailModal');
+    }
+};
 currentTransactions = []; // Store globally for detail view
 
 async function fetchPaymentsList() {

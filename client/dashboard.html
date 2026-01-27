@@ -846,10 +846,10 @@
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>Time Bought</th>
+                  <th class="mobile-hide">Time Bought</th>
                   <th>Phone Number</th>
-                  <th>Package</th>
-                  <th>Amount</th>
+                  <th class="mobile-hide">Package</th>
+                  <th class="mobile-hide">Amount</th>
                   <th>Voucher Code</th>
                 </tr>
               </thead>
@@ -1004,11 +1004,11 @@
               <thead>
                 <tr>
                   <th>Date</th>
-                  <th>Type</th>
+                  <th class="mobile-hide">Type</th>
                   <th>Amount</th>
-                  <th>Status</th>
-                  <th>Description</th>
-                  <th>Ref</th>
+                  <th class="mobile-hide">Status</th>
+                  <th class="mobile-hide">Description</th>
+                  <th class="mobile-hide">Ref</th>
                 </tr>
               </thead>
               <tbody id="myTransactionsTableBody">
@@ -1555,6 +1555,22 @@
       <button class="support-fab" onclick="toggleSupport()">
         <i class="fas fa-headset"></i>
       </button>
+    </div>
+
+    <!-- Generic Detail Modal (Responsive Tables) -->
+    <div id="genericDetailModal" class="dashboard-modal hidden">
+        <div class="dashboard-modal-content" style="max-width: 500px">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 id="genericDetailTitle" style="margin: 0">Details</h3>
+                <button onclick="closeDashModal('genericDetailModal')" style="background: none; border: none; color: #666; font-size: 1.5rem; cursor: pointer;">&times;</button>
+            </div>
+            <div id="genericDetailContent">
+                <!-- Populated by JS -->
+            </div>
+            <div class="modal-actions" style="margin-top: 20px">
+                <button onclick="closeDashModal('genericDetailModal')" class="btn-cancel">Close</button>
+            </div>
+        </div>
     </div>
 
     <!-- Package Detail Modal -->
