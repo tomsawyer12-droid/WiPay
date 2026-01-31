@@ -277,7 +277,7 @@
                 <!-- Populated by JS -->
             </div>
 
-            <div class="modal-actions" style="margin-top:20px;">
+            <div class="modal-actions" style="margin-top:20px; display:flex; justify-content:flex-end; gap:10px;" id="detailsFooter">
                 <button onclick="closeModal('tenantDetailsModal')" class="btn-cancel">Close</button>
             </div>
         </div>
@@ -640,7 +640,6 @@
                             <td>
                                 <div class="actions-cell">
                                     ${t.role !== 'super_admin' ? `<button class="btn-cancel btn-sm" onclick="deleteTenant(${t.id})">Delete</button>` : '<div class="btn-sm"></div>'}
-                                    <button class="btn-warning btn-sm" onclick="openEditModal(${t.id}, '${escapeHtml(t.username)}', '${escapeHtml(t.email || '')}', '${escapeHtml(t.business_name || '')}', '${escapeHtml(t.business_phone || '')}')">Edit</button>
                                     ${t.billing_type === 'subscription' ? `<button class="btn-submit btn-sm" onclick="openRenewModal(${t.id}, '${t.subscription_expiry || ''}')">Renew</button>` : '<div class="btn-sm"></div>'}
                                 </div>
                             </td>
@@ -655,6 +654,7 @@
 
             const title = document.getElementById('detailsTitle');
             const body = document.getElementById('detailsBody');
+            const footer = document.getElementById('detailsFooter');
 
             title.textContent = `Details for ${tenant.username}`;
 
@@ -729,6 +729,12 @@
                         <button class="btn-success btn-sm" style="background:#ff9800; border:none;" onclick="generateVPN(${tenant.id})">Generate / Refresh VPN</button>
                     </div>
                 </div>
+            `;
+
+            // Update Footer with Edit Button
+            footer.innerHTML = `
+                <button class="btn-warning" style="margin-right: auto;" onclick="openEditModal(${tenant.id}, '${escapeHtml(tenant.username)}', '${escapeHtml(tenant.email || '')}', '${escapeHtml(tenant.business_name || '')}', '${escapeHtml(tenant.business_phone || '')}')">Edit Tenant</button>
+                <button onclick="closeModal('tenantDetailsModal')" class="btn-cancel">Close</button>
             `;
 
             openModal('tenantDetailsModal');

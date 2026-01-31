@@ -11,6 +11,7 @@ const path = require('path');
 
 // Configure Multer for temp uploads
 const upload = multer({ dest: 'uploads/' });
+const WITHDRAWAL_FEE = Number(process.env.WITHDRAW_FEE);
 
 // Middleware applied to all routes in this file
 // Middleware applied to all routes in this file
@@ -742,10 +743,10 @@ router.get('/admin/stats', async (req, res) => {
 
         const statsQuery = `
             SELECT 
-                COALESCE(SUM(CASE WHEN DATE(created_at) = CURDATE() THEN (amount - COALESCE(fee,0)) ELSE 0 END), 0) as daily_revenue,
-                COALESCE(SUM(CASE WHEN YEARWEEK(created_at, 1) = YEARWEEK(CURDATE(), 1) THEN (amount - COALESCE(fee,0)) ELSE 0 END), 0) as weekly_revenue,
-                COALESCE(SUM(CASE WHEN MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE()) THEN (amount - COALESCE(fee,0)) ELSE 0 END), 0) as monthly_revenue,
-                COALESCE(SUM(CASE WHEN YEAR(created_at) = YEAR(CURDATE()) THEN (amount - COALESCE(fee,0)) ELSE 0 END), 0) as yearly_revenue,
+                COALESCE(SUM(CASE WHEN DATE(CONVERT_TZ(created_at, '+00:00', '+03:00')) = DATE(CONVERT_TZ(NOW(), '+00:00', '+03:00')) THEN (amount - COALESCE(fee,0)) ELSE 0 END), 0) as daily_revenue,
+                COALESCE(SUM(CASE WHEN YEARWEEK(CONVERT_TZ(created_at, '+00:00', '+03:00'), 1) = YEARWEEK(CONVERT_TZ(NOW(), '+00:00', '+03:00'), 1) THEN (amount - COALESCE(fee,0)) ELSE 0 END), 0) as weekly_revenue,
+                COALESCE(SUM(CASE WHEN MONTH(CONVERT_TZ(created_at, '+00:00', '+03:00')) = MONTH(CONVERT_TZ(NOW(), '+00:00', '+03:00')) AND YEAR(CONVERT_TZ(created_at, '+00:00', '+03:00')) = YEAR(CONVERT_TZ(NOW(), '+00:00', '+03:00')) THEN (amount - COALESCE(fee,0)) ELSE 0 END), 0) as monthly_revenue,
+                COALESCE(SUM(CASE WHEN YEAR(CONVERT_TZ(created_at, '+00:00', '+03:00')) = YEAR(CONVERT_TZ(NOW(), '+00:00', '+03:00')) THEN (amount - COALESCE(fee,0)) ELSE 0 END), 0) as yearly_revenue,
                 COALESCE(SUM(amount - COALESCE(fee,0)), 0) as total_revenue
             FROM transactions
             ${financeWhere}
@@ -755,11 +756,17 @@ router.get('/admin/stats', async (req, res) => {
 
         // ALWAYS Global Stats (Balance)
         const [globalRevRows] = await db.query("SELECT COALESCE(SUM(amount - COALESCE(fee, 0)), 0) as rev FROM transactions WHERE admin_id = ? AND status = 'success'", [adminId]);
-        const [withdrawStats] = await db.query('SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals WHERE admin_id = ? AND (status="success" OR status="pending")', [adminId]);
+        const [withdrawStats] = await db.query('SELECT COALESCE(SUM(amount + COALESCE(fee, 0)), 0) as total_withdrawn FROM withdrawals WHERE admin_id = ? AND (status="success" OR status="pending")', [adminId]);
 
         const globalRevenue = Number(globalRevRows[0].rev);
         const totalWithdrawn = Number(withdrawStats[0].total_withdrawn);
-        const netBalance = globalRevenue - totalWithdrawn;
+        
+        // Total wallet balance (before the next withdrawal fee)
+        const totalBalance = globalRevenue - totalWithdrawn;
+
+        // Withdrawable balance = Total Revenue - (Withdrawals + Fees) - 2000 (reserved for next withdrawal)
+        let netBalance = totalBalance - WITHDRAWAL_FEE;
+        if (netBalance < 0) netBalance = 0;
 
         // 2. Counts (Filtered)
         let countsWhere = "WHERE admin_id = ?";
@@ -802,11 +809,13 @@ router.get('/admin/stats', async (req, res) => {
 
         // 3. Subscription Status
         const [adminInfo] = await db.query('SELECT subscription_expiry FROM admins WHERE id = ?', [adminId]);
+        const expiryDate = (adminInfo && adminInfo.length > 0) ? adminInfo[0].subscription_expiry : null;
 
         res.json({
             finance: {
                 ...transStats[0],
                 gross_revenue: globalRevenue,
+                total_balance: totalBalance,
                 net_balance: netBalance
             },
             counts: {
@@ -817,7 +826,7 @@ router.get('/admin/stats', async (req, res) => {
                 payments_count: paymentCount[0].count
             },
             subscription: {
-                expiry: adminInfo ? adminInfo[0].subscription_expiry : null
+                expiry: expiryDate
             }
         });
     } catch (err) {

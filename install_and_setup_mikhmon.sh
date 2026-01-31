@@ -12,14 +12,23 @@ PHP_VER=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
 PHP_SOCK="unix:/var/run/php/php${PHP_VER}-fpm.sock"
 echo "Detected PHP $PHP_VER (Sock: $PHP_SOCK)"
 
-# 2. Setup Mikhmon Directory (The Missing Part!)
+# 2. Setup Mikhmon Directory
 echo "Downloading Mikhmon..."
 MIKHMON_DIR="/var/www/wipay-client/mikhmon"
+MASTER_DIR="/var/www/wipay-client/mikhmon_master"
 mkdir -p $MIKHMON_DIR
+mkdir -p $MASTER_DIR
+
 cd /tmp
 wget -O mikhmon.zip https://github.com/laksa19/mikhmonv3/archive/refs/heads/master.zip
 unzip -o mikhmon.zip
 cp -r mikhmonv3-master/* $MIKHMON_DIR/
+# Populate Master Folder for future isolation
+cp -r mikhmonv3-master/* $MASTER_DIR/
+
+# Add autologin bridge to master
+cp /var/www/wipay-server/mikhmon_master/autologin.php $MASTER_DIR/ 2>/dev/null || true
+
 rm -rf mikhmonv3-master mikhmon.zip
 
 echo "Setting Permissions..."

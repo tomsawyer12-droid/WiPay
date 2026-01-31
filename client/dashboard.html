@@ -233,30 +233,11 @@
         <!-- Expiry Banner (Responsive) -->
         <div
           id="expiryBanner"
-          style="
-            display: none;
-            width: 100%;
-            background: #e74c3c;
-            color: white;
-            text-align: center;
-            padding: 15px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-            cursor: pointer;
-            box-sizing: border-box;
-            word-wrap: break-word;
-            margin-bottom: 20px;
-          "
+          style="display: none"
           onclick="openDashModal('subscriptionModal')"
         >
-          <strong>⚠️ ALERT:</strong> Your Subscription to UGPAY has expired.
-          <span
-            style="
-              text-decoration: underline;
-              margin-left: 10px;
-              white-space: nowrap;
-            "
-            >Click here to Renew</span
-          >
+          <span class="banner-icon">⚠️</span> <strong>ALERT:</strong> Your Subscription to UGPAY has expired.
+          <span class="renew-link">Click here to Renew</span>
         </div>
 
         <!-- New Main Header -->
@@ -300,16 +281,9 @@
 
           <!-- 3. Right: Button + Avatar -->
           <div class="header-right-container">
-            <button class="btn-check-site" onclick="openCheckSiteModal()">
-              <i class="fas fa-globe"></i>
-              <span>Check Site</span>
-            </button>
             <button
+              id="btnSellVoucher"
               class="btn-sell-voucher"
-              onclick="
-                loadPackagesForSell();
-                openDashModal('sellVoucherModal');
-              "
             >
               Sell Voucher
             </button>
@@ -381,6 +355,10 @@
         <!-- Sub Header (Breadcrumbs) -->
         <div class="sub-header">
           <div class="breadcrumb" id="breadcrumb">Home > Dashboard</div>
+          <button class="btn-check-site" onclick="openCheckSiteModal()">
+            <i class="fas fa-globe"></i>
+            <span>Check Site</span>
+          </button>
         </div>
 
         <!-- Mobile Navigation (Visible only on mobile) -->
@@ -470,12 +448,20 @@
               </div>
             </div>
 
+            <div class="stat-card blue">
+              <div class="stat-value" id="total-wallet-balance">Loading...</div>
+              <div class="stat-label">Total Wallet Balance</div>
+              <div class="card-footer" onclick="openDashModal('balanceInfoModal')" style="cursor: pointer;">
+                Wallet Total <span class="arrow">→</span>
+              </div>
+            </div>
+
             <div class="stat-card green">
               <div class="stat-value" id="balance">Loading...</div>
-              <div class="stat-label">Mobile Money Balance</div>
+              <div class="stat-label">Withdrawable Balance</div>
               <div
                 class="card-footer"
-                onclick="openDashModal('withdrawModal')"
+                onclick="resetWithdrawalModal(); openDashModal('withdrawModal');"
                 style="cursor: pointer"
               >
                 Withdraw UGX <span class="arrow">→</span>
@@ -1523,11 +1509,11 @@
         </div>
 
         <div class="modal-actions">
-          <button class="btn-cancel" onclick="closeDashModal('withdrawModal')">
+          <button class="btn-cancel" onclick="resetWithdrawalModal(); closeDashModal('withdrawModal')">
             Cancel
           </button>
-          <button class="btn-submit" id="btnWithdrawNext">Next</button>
-          <button class="btn-submit hidden" id="btnWithdrawConfirm">
+          <button class="btn-submit" id="btnWithdrawNext" onclick="initiateWithdrawal()">Next</button>
+          <button class="btn-submit hidden" id="btnWithdrawConfirm" onclick="submitWithdrawal()">
             Confirm & Withdraw
           </button>
         </div>
@@ -1629,9 +1615,25 @@
     </div>
 
     <script src="js/config.js?v=9999"></script>
-    <script src="js/dashboard-logic.js?v=9999"></script>
+    <script type="module" src="js/dashboard-logic.js?v=9999"></script>
     <script>
       console.log("DASHBOARD HTML LOADED");
     </script>
+    <!-- Balance Info Modal -->
+    <div id="balanceInfoModal" class="dashboard-modal hidden">
+      <div class="dashboard-modal-content" style="max-width: 400px; text-align: center;">
+        <div style="margin-bottom: 16px; font-size: 3rem; color: #3b82f6;">
+          <i class="fas fa-info-circle"></i>
+        </div>
+        <h3 class="modal-title">Wallet Balance Info</h3>
+        <p style="color: #666; font-size: 0.95rem; line-height: 1.5; margin-bottom: 24px;">
+          This is your <strong>Total Wallet Balance</strong>. <br><br>
+          Please note that a fixed withdrawal fee of <strong>2,000 UGX</strong> will be deducted from this amount whenever you make a withdrawal.
+        </p>
+        <div class="modal-actions">
+          <button class="btn-submit" onclick="closeDashModal('balanceInfoModal')">Got it</button>
+        </div>
+      </div>
+    </div>
   </body>
 </html>

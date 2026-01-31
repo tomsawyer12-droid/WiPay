@@ -1,26 +1,26 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const bcrypt = require('bcryptjs');
-const { exec } = require('child_process');
-const db = require('../config/db');
-const { authenticateToken, verifySuperAdmin } = require('../middleware/auth');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const bcrypt = require("bcryptjs");
+const { exec } = require("child_process");
+const db = require("../config/db");
+const { authenticateToken, verifySuperAdmin } = require("../middleware/auth");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 
 // Configure Multer Storage
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const uploadDir = path.join(__dirname, '../../uploads/resources');
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-        // Unique filename: timestamp-original
-        cb(null, Date.now() + '-' + file.originalname.replace(/\s+/g, '_'));
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(__dirname, "../../uploads/resources");
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
     }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    // Unique filename: timestamp-original
+    cb(null, Date.now() + "-" + file.originalname.replace(/\s+/g, "_"));
+  },
 });
 const upload = multer({ storage: storage });
 
@@ -29,9 +29,9 @@ router.use(authenticateToken);
 router.use(verifySuperAdmin);
 
 // Get All Tenants (Admins) with their routers
-router.get('/tenants', async (req, res) => {
-    try {
-        const query = `
+router.get("/tenants", async (req, res) => {
+  try {
+    const query = `
             SELECT 
                 a.id, a.username, a.role, a.billing_type, a.subscription_expiry, a.last_active_at, a.created_at,
                 a.email, a.business_name, a.business_phone,
@@ -48,304 +48,385 @@ router.get('/tenants', async (req, res) => {
             GROUP BY a.id
             ORDER BY a.created_at DESC
         `;
-        const [admins] = await db.query(query);
+    const [admins] = await db.query(query);
 
-        // Clean up JSON_ARRAYAGG if no routers (MySQL returns [null] or similar)
-        const cleanedAdmins = admins.map(admin => ({
-            ...admin,
-            routers: (admin.routers && admin.routers[0] && admin.routers[0].id !== null) ? admin.routers : []
-        }));
+    // Clean up JSON_ARRAYAGG if no routers (MySQL returns [null] or similar)
+    const cleanedAdmins = admins.map((admin) => ({
+      ...admin,
+      routers:
+        admin.routers && admin.routers[0] && admin.routers[0].id !== null
+          ? admin.routers
+          : [],
+    }));
 
-        res.json(cleanedAdmins);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Server error fetching tenants' });
-    }
+    res.json(cleanedAdmins);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error fetching tenants" });
+  }
 });
 
 // Create New Tenant
-router.post('/tenants', async (req, res) => {
-    const { username, password, email, business_name, business_phone } = req.body;
+router.post("/tenants", async (req, res) => {
+  const { username, password, email, business_name, business_phone } = req.body;
 
-    if (!username || !password) {
-        return res.status(400).json({ error: 'Username and password are required' });
+  if (!username || !password) {
+    return res
+      .status(400)
+      .json({ error: "Username and password are required" });
+  }
+
+  try {
+    // Check if username exists
+    const [existing] = await db.query(
+      "SELECT id FROM admins WHERE username = ?",
+      [username],
+    );
+    if (existing.length > 0) {
+      return res.status(400).json({ error: "Username already exists" });
     }
 
-    try {
-        // Check if username exists
-        const [existing] = await db.query('SELECT id FROM admins WHERE username = ?', [username]);
-        if (existing.length > 0) {
-            return res.status(400).json({ error: 'Username already exists' });
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(password, salt);
+
+    const billingType = req.body.billing_type || "commission";
+    const userEmail = email || null;
+    const bName = business_name || "UGPAY";
+    const bPhone = business_phone || null;
+
+    const [result] = await db.query(
+      "INSERT INTO admins (username, password_hash, role, billing_type, email, business_name, business_phone) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [username, hash, "admin", billingType, userEmail, bName, bPhone],
+    );
+
+    // AUTOMATION: Create Isolated Mikhmon Instance
+    const scriptPath = path.join(
+      __dirname,
+      "../../scripts/create_mikhmon_client.sh",
+    );
+    const vpnScriptPath = path.join(__dirname, "../../scripts/AUTOMATE_VPN.sh");
+
+    // Sanitize username for folder creation (replace spaces with underscores)
+    const safeUsername = username.replace(/\s+/g, "_");
+
+    // Execute the isolation script.
+    exec(`bash "${scriptPath}" "${safeUsername}"`, (error, stdout, stderr) => {
+      if (error)
+        console.error(`[MIKHMON-AUTO] Error for ${safeUsername}:`, error);
+      else console.log(`[MIKHMON-AUTO] Success for ${safeUsername}`);
+    });
+
+    // NEW: AUTOMATION: Create VPN Client
+    exec(
+      `bash "${vpnScriptPath}" "${safeUsername}"`,
+      async (error, stdout, stderr) => {
+        if (error) {
+          console.error(`[VPN-AUTO] Error for ${safeUsername}:`, error);
+          return;
         }
-
-        const salt = await bcrypt.genSalt(10);
-        const hash = await bcrypt.hash(password, salt);
-
-        const billingType = req.body.billing_type || 'commission';
-        const userEmail = email || null;
-        const bName = business_name || 'UGPAY';
-        const bPhone = business_phone || null;
-
-        const [result] = await db.query('INSERT INTO admins (username, password_hash, role, billing_type, email, business_name, business_phone) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [username, hash, 'admin', billingType, userEmail, bName, bPhone]);
-
-        // AUTOMATION: Create Isolated Mikhmon Instance
-        const scriptPath = path.join(__dirname, '../../create_mikhmon_client.sh');
-        const vpnScriptPath = path.join(__dirname, '../../AUTOMATE_VPN.sh');
-
-        // Sanitize username for folder creation (replace spaces with underscores)
-        const safeUsername = username.replace(/\s+/g, '_');
-
-        // Execute the isolation script. 
-        exec(`bash "${scriptPath}" "${safeUsername}"`, (error, stdout, stderr) => {
-            if (error) console.error(`[MIKHMON-AUTO] Error for ${safeUsername}:`, error);
-            else console.log(`[MIKHMON-AUTO] Success for ${safeUsername}`);
-        });
-
-        // NEW: AUTOMATION: Create VPN Client
-        exec(`bash "${vpnScriptPath}" "${safeUsername}"`, async (error, stdout, stderr) => {
-            if (error) {
-                console.error(`[VPN-AUTO] Error for ${safeUsername}:`, error);
-                return;
-            }
-            try {
-                const vpn = JSON.parse(stdout);
-                if (vpn.vpn_ip) {
-                    await db.query(`
+        try {
+          const vpn = JSON.parse(stdout);
+          if (vpn.vpn_ip) {
+            await db.query(
+              `
                         UPDATE admins SET 
                         vpn_ip = ?, vpn_private_key = ?, vpn_public_key = ?, vpn_server_pub = ?, vpn_endpoint = ? 
                         WHERE id = ?`,
-                        [vpn.vpn_ip, vpn.vpn_private_key, vpn.vpn_public_key, vpn.vpn_server_pub, vpn.vpn_endpoint, result.insertId]
-                    );
-                    console.log(`[VPN-AUTO] VPN created and stored for ${safeUsername}`);
-                }
-            } catch (e) {
-                console.error(`[VPN-AUTO] Parse Error for ${safeUsername}:`, e, stdout);
-            }
-        });
+              [
+                vpn.vpn_ip,
+                vpn.vpn_private_key,
+                vpn.vpn_public_key,
+                vpn.vpn_server_pub,
+                vpn.vpn_endpoint,
+                result.insertId,
+              ],
+            );
+            console.log(
+              `[VPN-AUTO] VPN created and stored for ${safeUsername}`,
+            );
+          }
+        } catch (e) {
+          console.error(
+            `[VPN-AUTO] Parse Error for ${safeUsername}:`,
+            e,
+            stdout,
+          );
+        }
+      },
+    );
 
-        res.status(201).json({ message: 'Tenant created successfully. Mikhmon and VPN isolation pending.' });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Failed to create tenant' });
-    }
+    res
+      .status(201)
+      .json({
+        message:
+          "Tenant created successfully. Mikhmon and VPN isolation pending.",
+      });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to create tenant" });
+  }
 });
 
 // Delete Tenant
-router.delete('/tenants/:id', async (req, res) => {
-    const tenantId = req.params.id;
+router.delete("/tenants/:id", async (req, res) => {
+  const tenantId = req.params.id;
 
-    // Prevent deleting self
-    if (parseInt(tenantId) === req.user.id) {
-        return res.status(400).json({ error: 'Cannot delete your own account' });
-    }
+  // Prevent deleting self
+  if (parseInt(tenantId) === req.user.id) {
+    return res.status(400).json({ error: "Cannot delete your own account" });
+  }
 
-    try {
-        await db.query('DELETE FROM admins WHERE id = ?', [tenantId]);
-        res.json({ message: 'Tenant deleted successfully' });
-        // Note: In a real production app, we should probably soft-delete or handle their associated data.
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Failed to delete tenant' });
-    }
+  try {
+    await db.query("DELETE FROM admins WHERE id = ?", [tenantId]);
+    res.json({ message: "Tenant deleted successfully" });
+    // Note: In a real production app, we should probably soft-delete or handle their associated data.
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete tenant" });
+  }
 });
 
 // Renew Subscription
-router.patch('/tenants/:id/subscription', async (req, res) => {
-    const tenantId = req.params.id;
-    const { expiry_date } = req.body; // YYYY-MM-DD or Valid Date String
+router.patch("/tenants/:id/subscription", async (req, res) => {
+  const tenantId = req.params.id;
+  const { expiry_date } = req.body; // YYYY-MM-DD or Valid Date String
 
-    if (!expiry_date) return res.status(400).json({ error: 'Date required' });
+  if (!expiry_date) return res.status(400).json({ error: "Date required" });
 
-    try {
-        await db.query('UPDATE admins SET subscription_expiry = ? WHERE id = ?', [expiry_date, tenantId]);
-        res.json({ message: 'Subscription updated successfully' });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Failed to update subscription' });
-    }
+  try {
+    await db.query("UPDATE admins SET subscription_expiry = ? WHERE id = ?", [
+      expiry_date,
+      tenantId,
+    ]);
+    res.json({ message: "Subscription updated successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update subscription" });
+  }
 });
 
 // Update Tenant Profile
-router.patch('/tenants/:id', async (req, res) => {
-    const tenantId = req.params.id;
-    const { business_name, business_phone, email } = req.body;
+router.patch("/tenants/:id", async (req, res) => {
+  const tenantId = req.params.id;
+  const { business_name, business_phone, email } = req.body;
 
-    try {
-        await db.query(
-            'UPDATE admins SET business_name = ?, business_phone = ?, email = ? WHERE id = ?',
-            [business_name, business_phone, email, tenantId]
-        );
-        res.json({ message: 'Tenant updated successfully' });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Failed to update tenant' });
-    }
+  try {
+    await db.query(
+      "UPDATE admins SET business_name = ?, business_phone = ?, email = ? WHERE id = ?",
+      [business_name, business_phone, email, tenantId],
+    );
+    res.json({ message: "Tenant updated successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update tenant" });
+  }
 });
 
 // Reset Tenant Password
-router.patch('/tenants/:id/password', async (req, res) => {
-    const tenantId = req.params.id;
-    const { new_password } = req.body;
+router.patch("/tenants/:id/password", async (req, res) => {
+  const tenantId = req.params.id;
+  const { new_password } = req.body;
 
-    if (!new_password) return res.status(400).json({ error: 'New password is required' });
+  if (!new_password)
+    return res.status(400).json({ error: "New password is required" });
 
-    try {
-        const salt = await bcrypt.genSalt(10);
-        const hash = await bcrypt.hash(new_password, salt);
+  try {
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(new_password, salt);
 
-        await db.query('UPDATE admins SET password_hash = ? WHERE id = ?', [hash, tenantId]);
-        res.json({ message: 'Password reset successfully' });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Failed to reset password' });
-    }
+    await db.query("UPDATE admins SET password_hash = ? WHERE id = ?", [
+      hash,
+      tenantId,
+    ]);
+    res.json({ message: "Password reset successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to reset password" });
+  }
 });
 
 // Generate VPN for existing tenant
-router.post('/tenants/:id/vpn', async (req, res) => {
-    const tenantId = req.params.id;
-    try {
-        const [rows] = await db.query('SELECT username FROM admins WHERE id = ?', [tenantId]);
-        if (rows.length === 0) return res.status(404).json({ error: 'Tenant not found' });
+router.post("/tenants/:id/vpn", async (req, res) => {
+  const tenantId = req.params.id;
+  try {
+    const [rows] = await db.query("SELECT username FROM admins WHERE id = ?", [
+      tenantId,
+    ]);
+    if (rows.length === 0)
+      return res.status(404).json({ error: "Tenant not found" });
 
-        const username = rows[0].username;
-        const vpnScriptPath = path.join(__dirname, '../../AUTOMATE_VPN.sh');
-        const safeUsername = username.replace(/\s+/g, '_');
+    const username = rows[0].username;
+    const vpnScriptPath = path.join(__dirname, "../../scripts/AUTOMATE_VPN.sh");
+    const safeUsername = username.replace(/\s+/g, "_");
 
-        exec(`bash "${vpnScriptPath}" "${safeUsername}"`, async (error, stdout, stderr) => {
-            if (error) {
-                console.error(`[VPN-AUTO] Error for ${safeUsername}:`, error);
-                return res.status(500).json({ error: 'VPN Script failed', details: stderr });
-            }
-            try {
-                const vpn = JSON.parse(stdout);
-                if (vpn.vpn_ip) {
-                    await db.query(`
+    exec(
+      `bash "${vpnScriptPath}" "${safeUsername}"`,
+      async (error, stdout, stderr) => {
+        if (error) {
+          console.error(`[VPN-AUTO] Error for ${safeUsername}:`, error);
+          return res
+            .status(500)
+            .json({ error: "VPN Script failed", details: stderr });
+        }
+        try {
+          const vpn = JSON.parse(stdout);
+          if (vpn.vpn_ip) {
+            await db.query(
+              `
                         UPDATE admins SET 
                         vpn_ip = ?, vpn_private_key = ?, vpn_public_key = ?, vpn_server_pub = ?, vpn_endpoint = ? 
                         WHERE id = ?`,
-                        [vpn.vpn_ip, vpn.vpn_private_key, vpn.vpn_public_key, vpn.vpn_server_pub, vpn.vpn_endpoint, tenantId]
-                    );
-                    res.json({ message: 'VPN generated successfully', vpn });
-                } else {
-                    res.status(500).json({ error: 'VPN response was invalid', stdout });
-                }
-            } catch (e) {
-                console.error(`[VPN-AUTO] Parse Error for ${safeUsername}:`, e, stdout);
-                res.status(500).json({ error: 'Failed to parse VPN output', stdout });
-            }
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Server error' });
-    }
+              [
+                vpn.vpn_ip,
+                vpn.vpn_private_key,
+                vpn.vpn_public_key,
+                vpn.vpn_server_pub,
+                vpn.vpn_endpoint,
+                tenantId,
+              ],
+            );
+            res.json({ message: "VPN generated successfully", vpn });
+          } else {
+            res.status(500).json({ error: "VPN response was invalid", stdout });
+          }
+        } catch (e) {
+          console.error(
+            `[VPN-AUTO] Parse Error for ${safeUsername}:`,
+            e,
+            stdout,
+          );
+          res.status(500).json({ error: "Failed to parse VPN output", stdout });
+        }
+      },
+    );
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 // System Stats
-router.get('/stats', async (req, res) => {
-    try {
-        const [admins] = await db.query('SELECT COUNT(*) as count FROM admins WHERE role = "admin"');
-        const [vouchers] = await db.query('SELECT COUNT(*) as count FROM vouchers');
-        const [totalRevenue] = await db.query('SELECT SUM(amount) as total FROM transactions WHERE status = "SUCCESS"');
-        const [totalFees] = await db.query('SELECT SUM(fee) as total FROM transactions WHERE status = "SUCCESS"');
-        const [totalSubscriptions] = await db.query('SELECT SUM(amount) as total FROM admin_subscriptions WHERE status = "success"');
+router.get("/stats", async (req, res) => {
+  try {
+    const [admins] = await db.query(
+      'SELECT COUNT(*) as count FROM admins WHERE role = "admin"',
+    );
+    const [vouchers] = await db.query("SELECT COUNT(*) as count FROM vouchers");
+    const [totalRevenue] = await db.query(
+      'SELECT SUM(amount) as total FROM transactions WHERE status = "SUCCESS"',
+    );
+    const [totalFees] = await db.query(
+      'SELECT SUM(fee) as total FROM transactions WHERE status = "SUCCESS"',
+    );
+    const [totalSubscriptions] = await db.query(
+      'SELECT SUM(amount) as total FROM admin_subscriptions WHERE status = "success"',
+    );
 
-        res.json({
-            tenantCount: admins[0].count,
-            totalVouchers: vouchers[0].count,
-            totalRevenue: totalRevenue[0].total || 0,
-            totalCommission: totalFees[0].total || 0,
-            totalSubscriptions: totalSubscriptions[0].total || 0
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Failed to fetch stats' });
-    }
+    res.json({
+      tenantCount: admins[0].count,
+      totalVouchers: vouchers[0].count,
+      totalRevenue: totalRevenue[0].total || 0,
+      totalCommission: totalFees[0].total || 0,
+      totalSubscriptions: totalSubscriptions[0].total || 0,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch stats" });
+  }
 });
 
 // --- RESOURCES (FILE UPLOAD) ---
 
 // Upload Resource
-router.post('/resources', upload.single('file'), async (req, res) => {
-    try {
-        if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+router.post("/resources", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-        const { title, description } = req.body;
-        // Path relative to server root for public access (served via static /uploads)
-        const publicPath = '/uploads/resources/' + req.file.filename;
+    const { title, description } = req.body;
+    // Path relative to server root for public access (served via static /uploads)
+    const publicPath = "/uploads/resources/" + req.file.filename;
 
-        await db.query(
-            'INSERT INTO resources (title, file_path, description) VALUES (?, ?, ?)',
-            [title, publicPath, description || '']
-        );
+    await db.query(
+      "INSERT INTO resources (title, file_path, description) VALUES (?, ?, ?)",
+      [title, publicPath, description || ""],
+    );
 
-        res.status(201).json({ message: 'File uploaded successfully', file: req.file });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Upload failed' });
-    }
+    res
+      .status(201)
+      .json({ message: "File uploaded successfully", file: req.file });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Upload failed" });
+  }
 });
 
 // List Resources
-router.get('/resources', async (req, res) => {
-    try {
-        const [files] = await db.query('SELECT * FROM resources ORDER BY created_at DESC');
-        res.json(files);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Failed to fetch resources' });
-    }
+router.get("/resources", async (req, res) => {
+  try {
+    const [files] = await db.query(
+      "SELECT * FROM resources ORDER BY created_at DESC",
+    );
+    res.json(files);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch resources" });
+  }
 });
 
 // Delete Resource
-router.delete('/resources/:id', async (req, res) => {
-    const id = req.params.id;
-    try {
-        const [rows] = await db.query('SELECT file_path FROM resources WHERE id = ?', [id]);
-        if (rows.length === 0) return res.status(404).json({ error: 'File not found' });
+router.delete("/resources/:id", async (req, res) => {
+  const id = req.params.id;
+  try {
+    const [rows] = await db.query(
+      "SELECT file_path FROM resources WHERE id = ?",
+      [id],
+    );
+    if (rows.length === 0)
+      return res.status(404).json({ error: "File not found" });
 
-        const filePath = rows[0].file_path; // e.g., /uploads/resources/filename
-        const absolutePath = path.join(__dirname, '../../', filePath);
+    const filePath = rows[0].file_path; // e.g., /uploads/resources/filename
+    const absolutePath = path.join(__dirname, "../../", filePath);
 
-        // Remove from DB
-        await db.query('DELETE FROM resources WHERE id = ?', [id]);
+    // Remove from DB
+    await db.query("DELETE FROM resources WHERE id = ?", [id]);
 
-        // Remove from Disk
-        if (fs.existsSync(absolutePath)) {
-            fs.unlinkSync(absolutePath);
-        }
-
-        res.json({ message: 'Resource deleted' });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Delete failed' });
+    // Remove from Disk
+    if (fs.existsSync(absolutePath)) {
+      fs.unlinkSync(absolutePath);
     }
+
+    res.json({ message: "Resource deleted" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Delete failed" });
+  }
 });
 
 // --- REGISTRATION REQUESTS ---
 
 // List all registration requests
-router.get('/registration-requests', async (req, res) => {
-    try {
-        const [rows] = await db.query('SELECT * FROM registration_requests ORDER BY created_at DESC');
-        res.json(rows);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Failed to fetch registration requests' });
-    }
+router.get("/registration-requests", async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      "SELECT * FROM registration_requests ORDER BY created_at DESC",
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch registration requests" });
+  }
 });
 
 // Delete/Reject a registration request
-router.delete('/registration-requests/:id', async (req, res) => {
-    const id = req.params.id;
-    try {
-        await db.query('DELETE FROM registration_requests WHERE id = ?', [id]);
-        res.json({ message: 'Registration request deleted/rejected' });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Failed to delete request' });
-    }
+router.delete("/registration-requests/:id", async (req, res) => {
+  const id = req.params.id;
+  try {
+    await db.query("DELETE FROM registration_requests WHERE id = ?", [id]);
+    res.json({ message: "Registration request deleted/rejected" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete request" });
+  }
 });
 
 module.exports = router;

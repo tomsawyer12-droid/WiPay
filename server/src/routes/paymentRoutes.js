@@ -5,19 +5,23 @@ const sessionStore = require('../config/session');
 const { sendSMS } = require('../utils/sms');
 const { sendPaymentNotification, sendSMSPurchaseNotification, sendWithdrawalOTP, sendWithdrawalNotification, sendLowSMSBalanceWarning } = require('../utils/email');
 const { authenticateToken } = require('../middleware/auth');
+const { idempotencyMiddleware, requireIdempotency } = require('../middleware/idempotency');
 require('dotenv').config();
 
 const RELWORX_API_URL = 'https://payments.relworx.com/api/mobile-money/request-payment';
 const RELWORX_SEND_PAYMENT_URL = 'https://payments.relworx.com/api/mobile-money/send-payment';
 const RELWORX_API_KEY = process.env.RELWORX_API_KEY;
 const RELWORX_ACCOUNT_NO = process.env.RELWORX_ACCOUNT_NO;
+const WITHDRAWAL_FEE = Number(process.env.WITHDRAW_FEE);
 
 async function getAdminBalance(adminId) {
     try {
         const [transStats] = await db.query("SELECT COALESCE(SUM(amount - COALESCE(fee, 0)), 0) as total_revenue FROM transactions WHERE status = 'success' AND admin_id = ?", [adminId]);
-        const [withdrawStats] = await db.query("SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals WHERE admin_id = ?", [adminId]);
-        const bal = Number(transStats[0].total_revenue) - Number(withdrawStats[0].total_withdrawn);
-        console.log(`[BALANCE] Admin ${adminId}: Rev=${transStats[0].total_revenue}, Wd=${withdrawStats[0].total_withdrawn}, Bal=${bal}`);
+        const [withdrawStats] = await db.query("SELECT COALESCE(SUM(amount + COALESCE(fee, 0)), 0) as total_withdrawn FROM withdrawals WHERE (status='success' OR status='pending') AND admin_id = ?", [adminId]);
+        const totalRev = Number(transStats[0].total_revenue);
+        const totalWd = Number(withdrawStats[0].total_withdrawn);
+        const bal = totalRev - totalWd;
+        console.log(`[BALANCE] Admin ${adminId}: Rev=${totalRev}, Wd=${totalWd}, Bal=${bal}`);
         return bal;
     } catch (e) {
         console.error('Error fetching balance:', e);
@@ -31,7 +35,7 @@ function grantAccess(phoneNumber, durationHours) {
 }
 
 // Purchase Initiation
-router.post('/purchase', async (req, res) => {
+router.post('/purchase', idempotencyMiddleware, async (req, res) => {
     const { phone_number, package_id, router_id } = req.body; // Added router_id
 
     if (!phone_number || !package_id) return res.status(400).json({ error: 'Phone number and package ID required.' });
@@ -94,7 +98,7 @@ router.post('/purchase', async (req, res) => {
 });
 
 // Webhook Endpoint (Relworx callbacks)
-router.post('/webhook', async (req, res) => {
+router.post('/webhook', idempotencyMiddleware, async (req, res) => {
     const data = req.body;
     console.log('[WEBHOOK] Received:', JSON.stringify(data));
 
@@ -278,7 +282,7 @@ router.post('/webhook', async (req, res) => {
 });
 
 // Sync Polling Endpoint
-router.post('/check-payment-status', async (req, res) => {
+router.post('/check-payment-status', idempotencyMiddleware, async (req, res) => {
     const { transaction_ref } = req.body;
     console.log(`[POLL] Checking Ref: ${transaction_ref}`);
 
@@ -476,18 +480,17 @@ router.post('/check-payment-status', async (req, res) => {
 });
 
 // Initiate Withdrawal (OTP)
-router.post('/admin/withdraw/initiate', authenticateToken, async (req, res) => {
+router.post('/admin/withdraw/initiate', authenticateToken, requireIdempotency, async (req, res) => {
     const { amount, phone_number } = req.body;
     if (!amount || !phone_number) return res.status(400).json({ error: 'Required fields missing' });
 
     try {
         // 1. Check Balance
-        const [transStats] = await db.query("SELECT COALESCE(SUM(amount - fee), 0) as total_revenue FROM transactions WHERE status = 'success' AND admin_id = ?", [req.user.id]);
-        const [withdrawStats] = await db.query("SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals WHERE admin_id = ?", [req.user.id]);
-        const currentBalance = Number(transStats[0].total_revenue) - Number(withdrawStats[0].total_withdrawn);
+        const currentBalance = await getAdminBalance(req.user.id);
+        const withdrawable = Math.max(0, currentBalance - WITHDRAWAL_FEE);
 
-        if (Number(amount) > currentBalance) {
-            return res.status(400).json({ error: 'Insufficient funds', message: `Balance: ${currentBalance}` });
+        if (Number(amount) > withdrawable) {
+            return res.status(400).json({ error: 'Insufficient funds', message: `Max Withdrawable: ${withdrawable} (Fee: ${WITHDRAWAL_FEE})` });
         }
 
         // 2. Generate OTP
@@ -512,7 +515,7 @@ router.post('/admin/withdraw/initiate', authenticateToken, async (req, res) => {
 });
 
 // Admin Withdraw (Confirm)
-router.post('/admin/withdraw', authenticateToken, async (req, res) => {
+router.post('/admin/withdraw', authenticateToken, requireIdempotency, async (req, res) => {
     const { amount, phone_number, description, otp } = req.body;
 
     if (!amount || !phone_number || !otp) return res.status(400).json({ error: 'Required fields missing including OTP' });
@@ -551,8 +554,8 @@ router.post('/admin/withdraw', authenticateToken, async (req, res) => {
         // 3. Create Pending Record (LOCK FUNDS LOGICALLY)
         const reference = `W-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
         await db.query(
-            'INSERT INTO withdrawals (phone_number, amount, reference, description, admin_id, status) VALUES (?, ?, ?, ?, ?, "pending")',
-            [formattedPhone, amount, reference, description, req.user.id]
+            'INSERT INTO withdrawals (phone_number, amount, fee, reference, description, admin_id, status) VALUES (?, ?, ?, ?, ?, ?, "pending")',
+            [formattedPhone, amount, WITHDRAWAL_FEE, reference, description, req.user.id]
         );
 
         // 4. Clear OTP
@@ -565,7 +568,7 @@ router.post('/admin/withdraw', authenticateToken, async (req, res) => {
             msisdn: formattedPhone,
             currency: 'UGX',
             amount: Number(amount),
-            description: description || 'Admin Withdrawal'
+            description: description ? `${description} (Fee: 2000)` : 'Admin Withdrawal (Fee: 2000)'
         };
 
         const response = await fetch(RELWORX_SEND_PAYMENT_URL, {
@@ -617,7 +620,7 @@ router.get('/admin/my-transactions', authenticateToken, async (req, res) => {
                 amount, 
                 'success' as status, 
                 reference, 
-                description 
+                CONCAT(description, ' (Fee: 2000)') as description 
             FROM withdrawals 
             WHERE admin_id = ?
             

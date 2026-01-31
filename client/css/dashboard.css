@@ -206,9 +206,9 @@ body {
 }
 
 .btn-check-site {
-  background: transparent;
+  background: var(--grad-blue);
   color: white;
-  border: 1.5px solid rgba(59, 130, 246, 0.6);
+  border: none;
   padding: 10px 20px;
   border-radius: 99px;
   font-weight: 600;
@@ -219,12 +219,23 @@ body {
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
 .btn-check-site:hover {
+  transform: translateY(-2px);
+}
+
+/* Dark Mode Override for Check Site Button */
+body.dark-mode .btn-check-site {
+  background: transparent;
+  border: 1.5px solid rgba(59, 130, 246, 0.6);
+  box-shadow: none;
+}
+
+body.dark-mode .btn-check-site:hover {
   background: var(--grad-blue);
   border-color: transparent;
-  color: white;
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
@@ -233,6 +244,20 @@ body {
     padding: 8px 16px;
     font-size: 0.75rem;
   }
+}
+
+/* --- Sub Header (Breadcrumbs + Utility) --- */
+.sub-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.breadcrumb {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 500;
 }
 
 /* --- Stats Grid --- */
@@ -1297,26 +1322,89 @@ body.dark-mode .shimmer-line {
 
 /* --- Router Select Modal Cards --- */
 .btn-router-select {
-    width: 100%;
-    margin-bottom: 8px;
-    border: 1px solid var(--border-color);
-    background: var(--card-bg) !important;
-    color: var(--text-main) !important;
+  width: 100%;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg) !important;
+  color: var(--text-main) !important;
 }
 
 .btn-router-select:hover {
-    border-color: var(--primary-color) !important;
-    background: rgba(59, 130, 246, 0.05) !important;
-    transform: translateX(4px);
+  border-color: var(--primary-color) !important;
+  background: rgba(59, 130, 246, 0.05) !important;
+  transform: translateX(4px);
 }
 
 .sidebar-nav li[data-view="checkSite"] a i {
-    color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+/* Light Mode: Blue background for Routers (Check Site) */
+body.light .sidebar-nav li[data-view="routers"] a {
+  background: rgba(59, 130, 246, 0.1);
+  border-left: 3px solid var(--primary-color);
+}
+
+body.light .sidebar-nav li[data-view="routers"] a:hover {
+  background: rgba(59, 130, 246, 0.2);
 }
 
 /* --- Responsive Table Fixes --- */
 @media (max-width: 768px) {
-    .mobile-hide {
-        display: none !important;
-    }
+  .mobile-hide {
+    display: none !important;
+  }
+}
+
+/* --- Subscription Banner Premium Styles --- */
+#expiryBanner {
+  border-radius: 8px !important; /* Reduced from 12px */
+  margin: 0 0 24px 0 !important;
+  padding: 20px !important; /* Increased height */
+  box-shadow: var(--shadow-md) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  display: none; /* Controlled by JS */
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: white !important;
+  overflow: hidden;
+  position: relative;
+}
+
+#expiryBanner:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg) !important;
+  filter: brightness(1.1);
+}
+
+#expiryBanner strong {
+  font-weight: 800;
+}
+
+#expiryBanner .renew-link {
+  text-decoration: underline;
+  margin-left: 10px;
+  font-weight: 700;
+  opacity: 0.9;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#expiryBanner .renew-link:hover {
+  opacity: 1;
+  color: #fff;
+}
+
+@media (max-width: 768px) {
+  #expiryBanner .banner-icon {
+    display: none !important;
+  }
+  #expiryBanner {
+    padding: 15px !important; /* Slightly smaller padding on mobile */
+    font-size: 0.85rem;
+  }
 }
