@@ -88,7 +88,7 @@ router.post('/purchase', idempotencyMiddleware, async (req, res) => {
             });
         } else {
             console.error('[Purchase] Gateway Failed:', JSON.stringify(paymentData, null, 2));
-            await db.query('UPDATE transactions SET status = "failed" WHERE transaction_ref = ?', [reference]);
+            await db.query('UPDATE transactions SET status = "failed", webhook_data = ? WHERE transaction_ref = ?', [JSON.stringify(paymentData), reference]);
             res.status(400).json({ error: 'Payment gateway failed', details: paymentData });
         }
     } catch (err) {

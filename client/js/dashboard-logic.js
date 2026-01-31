@@ -324,15 +324,6 @@ async function initDashboard() {
         });
     }
 
-    // Sell Voucher Handler
-    const btnSellVoucher = document.getElementById('btnSellVoucher');
-    if (btnSellVoucher) {
-        btnSellVoucher.addEventListener('click', () => {
-            dh.loadPackagesForSell();
-            ui.openDashModal('sellVoucherModal');
-        });
-    }
-
      // Socket.IO
     if (typeof io !== 'undefined') {
         try {
