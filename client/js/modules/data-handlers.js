@@ -13,6 +13,7 @@ let currentMyTransactions = [];
 let currentBoughtVouchers = [];
 let currentRouterFilter = "";
 let countdownInterval = null;
+let currentSMSBalance = 0; // Added state to track balance locally
 
 export function setCurrentRouterFilter(val) {
     currentRouterFilter = val;
@@ -50,6 +51,11 @@ export async function loadStats() {
         if (document.getElementById('monthly-trans')) document.getElementById('monthly-trans').innerText = (finance.monthly_revenue || 0).toLocaleString();
         if (document.getElementById('yearly-trans')) document.getElementById('yearly-trans').innerText = (finance.yearly_revenue || 0).toLocaleString();
         if (document.getElementById('total-trans')) document.getElementById('total-trans').innerText = (finance.gross_revenue || 0).toLocaleString();
+        
+        // Agent Sales
+        if (document.getElementById('agent-sales')) {
+            document.getElementById('agent-sales').innerText = (finance.settled_agent_sales || 0).toLocaleString();
+        }
 
         // Balance Logic
         const totalBalEl = document.getElementById('total-wallet-balance');
@@ -136,6 +142,7 @@ export async function loadSMSBalance() {
         const el = document.getElementById('sms-balance');
         if (el) {
             if (data.balance !== undefined) {
+                currentSMSBalance = Number(data.balance); // Update local state
                 el.innerText = data.balance + ' SMS';
                 el.className = 'stat-value';
             }
@@ -514,12 +521,25 @@ export async function submitSellVoucher() {
     const phone = document.getElementById('sellPhone').value;
     if (!pkgId || !phone) return ui.showAlert('Missing fields', 'error');
 
+    // Client-side Balance Check
+    // We assume 1 SMS cost ~ 35-50 UGX or 1 Credit. 
+    // If balance is strictly 0 or very low, we warn user.
+    // However, exact cost is server-side. Let's safeguard against explicit 0.
+    if (currentSMSBalance < 35) {
+        ui.showAlert(`Insufficient SMS Balance (${currentSMSBalance}). Please Topup.`, 'error');
+        // Optional: Open Buy SMS Modal automatically?
+        // ui.openDashModal('buySMSModal'); 
+        return;
+    }
+
     try {
         const res = await api.post('/api/admin/sell-voucher', { package_id: pkgId, phone_number: phone });
         const data = await res.json();
+        
         if (res.ok) {
             ui.closeDashModal('sellVoucherModal');
             loadStats();
+            loadSMSBalance(); // Refresh balance
             document.getElementById('sellPhone').value = '';
             document.getElementById('sellPackageId').value = '';
 
@@ -529,7 +549,12 @@ export async function submitSellVoucher() {
             }
             ui.openDashModal('successModal');
         } else {
-            ui.showAlert(data.error || 'Failed to sell', 'error');
+            // Enhanced Error Handling
+            if (res.status === 400 && (data.error || '').toLowerCase().includes('balance')) {
+                 ui.showAlert(`Insufficient SMS Balance. Please Topup.`, 'error');
+            } else {
+                 ui.showAlert(data.error || 'Failed to sell', 'error');
+            }
         }
     } catch (e) { console.error(e); }
 }
@@ -783,32 +808,66 @@ function pollPaymentStatus(reference, callback) {
 // --- ROUTERS ---
 export async function fetchRouters() {
     try {
-        const res = await fetchAuth('/api/admin/routers');
+        console.log('Fetching Routers Stats...');
+        const res = await fetchAuth('/api/admin/routers/stats');
+        
+        if (!res.ok) {
+            console.error('Failed to fetch routers:', res.status);
+            return;
+        }
+
         const routers = await res.json();
+        console.log('Routers Data Received:', routers);
+
         const tbody = document.getElementById('routersTableBody');
         if (!tbody) return;
         tbody.innerHTML = '';
         
+        if (!Array.isArray(routers) || routers.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px; color: #aaa;">No routers found.</td></tr>';
+            return;
+        }
+
         routers.forEach(router => {
+            const safeName = String(router.name || '').replace(/'/g, "\\'");
+            const safeUrl = String(router.mikhmon_url || '').replace(/'/g, "\\'");
+            
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>
-                    <span>${ui.escapeHtml(router.name)}</span>
-                    <button class="hover-edit-btn" onclick="openEditRouterModal(${router.id}, '${router.name.replace(/'/g, "\\'")}', '${router.mikhmon_url.replace(/'/g, "\\'")}')" title="Edit">
-                        <i class="fas fa-pen"></i>
-                    </button>
+                    <div style="font-weight: bold; color: white;">${ui.escapeHtml(router.name)}</div>
+                    <div style="font-size: 0.75rem; color: #aaa; margin-top: 4px; display: flex; align-items: center; gap: 8px;">
+                        <span style="max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${ui.escapeHtml(router.mikhmon_url)}</span>
+                        <button class="hover-edit-btn" style="background:none; border:none; color:#666; cursor:pointer;" onclick="openEditRouterModal(${router.id}, '${safeName}', '${safeUrl}')" title="Edit">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                    </div>
                 </td>
-                <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    <a href="#" onclick="openMikhmon('${ui.escapeHtml(router.mikhmon_url)}'); return false;" style="color: var(--primary-color); text-decoration: none;">${ui.escapeHtml(router.mikhmon_url)}</a>
+                <td style="font-weight: bold; color: #4caf50;">
+                    ${Number(router.total_revenue || 0).toLocaleString()} UGX
+                </td>
+                <td style="color: ${router.daily_revenue > 0 ? '#ff9800' : '#888'};">
+                    ${Number(router.daily_revenue || 0).toLocaleString()} UGX
+                </td>
+                <td style="text-align: center;">
+                    <div class="badge ${router.voucher_stock < 10 ? 'bg-danger' : 'bg-success'}" style="font-size: 0.9rem; padding: 4px 10px;">
+                        ${router.voucher_stock}
+                    </div>
                 </td>
                 <td>
-                    <button class="btn-success btn-sm" onclick="openMikhmon('${ui.escapeHtml(router.mikhmon_url)}')">Manage</button>
-                    <button class="btn-cancel btn-sm" onclick="deleteRouter(${router.id})"><i class="fas fa-trash"></i></button>
+                    <div style="display: flex; gap: 5px;">
+                        <button class="btn-success btn-sm" onclick="openMikhmon('${safeUrl}', '${safeName}')">Manage</button>
+                        <button class="btn-cancel btn-sm" onclick="deleteRouter(${router.id})"><i class="fas fa-trash"></i></button>
+                    </div>
                 </td>
             `;
             tbody.appendChild(tr);
         });
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+        console.error('Error fetching routers:', e);
+        const tbody = document.getElementById('routersTableBody');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:red;">Error loading routers.</td></tr>';
+    }
 }
 
 export async function submitAddRouter() {
@@ -851,7 +910,8 @@ export async function submitEditRouter() {
 }
 
 export async function deleteRouter(id) {
-    if (!confirm('Delete this router link?')) return;
+    const confirmed = await ui.showConfirm('Delete this router link?');
+    if (!confirmed) return;
     try {
         const res = await api.delete(`/api/admin/routers/${id}`);
         if (res.ok) {
@@ -1058,11 +1118,160 @@ export async function openCheckSiteModal() {
                      ui.closeDashModal('checkSiteModal');
                      openMikhmon(r.mikhmon_url, r.name);
                  };
-                 btn.innerHTML = `<div><strong>${ui.escapeHtml(r.name)}</strong><br><small>${ui.escapeHtml(r.mikhmon_url)}</small></div> <i class="fas fa-chevron-right"></i>`;
+                 btn.innerHTML = `<div><strong>${ui.escapeHtml(r.name)}</strong></div> <i class="fas fa-chevron-right"></i>`;
                  list.appendChild(btn);
             });
          }
     } catch (e) { console.error(e); }
+}
+
+// --- AGENT MANAGEMENT ---
+
+export async function fetchAgentsList() {
+    try {
+        const res = await fetchAuth('/api/admin/agents');
+        const data = await res.json();
+
+        if (!res.ok) {
+            console.error('Fetch Agents Error API:', data.error);
+            const tbody = document.getElementById('agentsTableBody');
+            if (tbody) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #ef4444; padding: 20px;">
+                    <i class="fas fa-exclamation-triangle"></i> Error: ${ui.escapeHtml(data.error || 'Failed to load agents')}<br>
+                    <small>Make sure the database tables are updated.</small>
+                </td></tr>`;
+            }
+            return;
+        }
+
+        const agents = data;
+        const tbody = document.getElementById('agentsTableBody');
+        if (!tbody) return;
+        
+        tbody.innerHTML = '';
+        if (agents.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">No agents found. Click "+ Add" to create one.</td></tr>';
+            return;
+        }
+
+        agents.forEach(agent => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${ui.escapeHtml(agent.username)}</strong></td>
+                <td>${ui.escapeHtml(agent.phone_number || '-')}</td>
+                <td><span class="badge ${agent.stock_count > 0 ? 'badge-ongoing' : 'badge-failed'}">${agent.stock_count}</span></td>
+                <td><strong>${Number(agent.total_sales).toLocaleString()}</strong></td>
+                <td style="color: #ef4444;"><strong>${Number(agent.unsettled_amount).toLocaleString()}</strong></td>
+                <td>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn-action btn-edit" title="Assign Stock" onclick="openAssignVoucherModal(${agent.id}, '${ui.escapeHtml(agent.username)}')">
+                            <i class="fas fa-plus-circle"></i> Assign
+                        </button>
+                        <button class="btn-action btn-delete" title="Settle" onclick="settleAgentAccount(${agent.id}, '${ui.escapeHtml(agent.username)}', ${agent.unsettled_amount})">
+                            <i class="fas fa-check-double"></i> Settle
+                        </button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (err) {
+        console.error('Fetch Agents Error:', err);
+    }
+}
+
+export async function createAgent() {
+    const username = document.getElementById('newAgentUsername').value;
+    const password = document.getElementById('newAgentPassword').value;
+    const phone = document.getElementById('newAgentPhone').value;
+
+    if (!username || !password) return ui.showAlert('Username and Password are required', 'error');
+
+    try {
+        const res = await fetchAuth('/api/admin/agents', {
+            method: 'POST',
+            body: JSON.stringify({ username, password, phone_number: phone })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            ui.showAlert('Agent created successfully');
+            ui.closeDashModal('addAgentModal');
+            document.getElementById('newAgentUsername').value = '';
+            document.getElementById('newAgentPassword').value = '';
+            document.getElementById('newAgentPhone').value = '';
+            fetchAgentsList();
+        } else {
+            ui.showAlert(data.error || 'Failed to create agent', 'error');
+        }
+    } catch (err) {
+        ui.showAlert('Server error', 'error');
+    }
+}
+
+export async function openAssignVoucherModal(id, name) {
+    document.getElementById('assignAgentId').value = id;
+    document.getElementById('assignAgentName').innerText = name;
+    
+    // Load packages into select
+    const select = document.getElementById('assignPackageId');
+    if (select) {
+        select.innerHTML = '<option value="">Select Package</option>';
+        try {
+            const res = await fetchAuth('/api/admin/packages');
+            const packages = await res.json();
+            packages.forEach(pkg => {
+                const opt = document.createElement('option');
+                opt.value = pkg.id;
+                opt.innerText = `${pkg.name} (${pkg.price} UGX) - Stock: ${pkg.vouchers_count}`;
+                select.appendChild(opt);
+            });
+            ui.openDashModal('assignVouchersModal');
+        } catch (e) { console.error(e); }
+    }
+}
+
+export async function submitAssignVouchers() {
+    const agentId = document.getElementById('assignAgentId').value;
+    const packageId = document.getElementById('assignPackageId').value;
+    const quantity = document.getElementById('assignQuantity').value;
+
+    if (!packageId || !quantity || quantity <= 0) return ui.showAlert('Please select package and valid quantity', 'error');
+
+    try {
+        const res = await fetchAuth(`/api/admin/agents/${agentId}/assign`, {
+            method: 'POST',
+            body: JSON.stringify({ package_id: packageId, quantity })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            ui.showAlert(data.message);
+            ui.closeDashModal('assignVouchersModal');
+            document.getElementById('assignQuantity').value = '';
+            fetchAgentsList();
+        } else {
+            ui.showAlert(data.error || 'Failed to assign vouchers', 'error');
+        }
+    } catch (err) { ui.showAlert('Server error', 'error'); }
+}
+
+export async function settleAgentAccount(agentId, name, amount) {
+    if (amount <= 0) return ui.showAlert('Balance is zero. Nothing to settle.', 'info');
+
+    const confirmed = await ui.showConfirm(`Are you sure you want to settle ${amount.toLocaleString()} UGX for ${name}? This marks all their current sales as paid to you.`);
+    if (!confirmed) return;
+
+    try {
+        const res = await fetchAuth(`/api/admin/agents/${agentId}/settle`, { method: 'POST' });
+        if (res.ok) {
+            ui.showAlert('Agent account settled!');
+            fetchAgentsList();
+        } else {
+            const data = await res.json();
+            ui.showAlert(data.error || 'Failed to settle account', 'error');
+        }
+    } catch (err) { ui.showAlert('Server error', 'error'); }
 }
 
 export function performLogout() {

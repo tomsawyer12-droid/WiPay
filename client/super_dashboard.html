@@ -12,9 +12,21 @@
     <link rel="stylesheet" href="css/super.css">
 </head>
 <script>
-    if (!localStorage.getItem('wipay_role')) {
-        window.location.href = 'login_dashboard.html';
-    }
+    (function() {
+        const userStr = localStorage.getItem('wipay_user');
+        try {
+            if (userStr) {
+                const user = userStr.startsWith('{') ? JSON.parse(userStr) : { username: userStr, role: 'super_admin' };
+                if (user.role !== 'super_admin') {
+                    window.location.href = 'login_dashboard.html';
+                }
+            } else {
+                window.location.href = 'login_dashboard.html';
+            }
+        } catch (e) {
+            window.location.href = 'login_dashboard.html';
+        }
+    })();
 </script>
 
 <body>
@@ -70,10 +82,10 @@
                             <tr>
                                 <th>ID</th>
                                 <th>Username</th>
-                                <th>Role</th>
+                                <th>Wallet (UGX)</th>
+                                <th>SMS</th>
                                 <th>Billing</th>
                                 <th>Created At</th>
-                                <th>Router Info</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -445,12 +457,21 @@
                 const tbody = document.getElementById('requestsTableBody');
                 tbody.innerHTML = '';
 
-                if (data.length === 0) {
+                // Filter out 'approved' / 'rejected'? Or show all?
+                // Let's only show 'pending_otp' (maybe), 'pending_approval'.
+                // Ideally, user only cares about 'pending_approval'.
+                const pending = data.filter(r => r.status === 'pending_approval' || r.status === 'pending_otp');
+
+                if (pending.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#888;">No pending requests.</td></tr>';
                     return;
                 }
 
-                data.forEach(r => {
+                pending.forEach(r => {
+                    let statusBadge = '';
+                    if (r.status === 'pending_otp') statusBadge = '<span class="badge bg-secondary">Pending OTP</span>';
+                    if (r.status === 'pending_approval') statusBadge = '<span class="badge bg-primary">Pending Approval</span>';
+
                     tbody.innerHTML += `
                         <tr>
                             <td>${new Date(r.created_at).toLocaleDateString()}</td>
@@ -467,12 +488,16 @@
                                 <small style="color:#aaa">${escapeHtml(r.address || '-')}</small>
                             </td>
                             <td>
-                                <div class="badge bg-primary">${escapeHtml(r.system_usage)}</div>
+                                <div class="badge bg-primary" style="margin-bottom:5px;">${escapeHtml(r.system_usage)}</div>
                                 <div style="font-size:0.8rem; color:#888;">${escapeHtml(r.login_method)}</div>
+                                <div style="margin-top:5px;">${statusBadge}</div>
                             </td>
                             <td>
                                 <div class="actions-cell">
-                                    <button class="btn-success btn-sm" onclick="approveRequest(${r.id}, '${escapeHtml(r.first_name)} ${escapeHtml(r.last_name)}', '${escapeHtml(r.email)}', '${escapeHtml(r.phone_number)}', '${escapeHtml(r.hotspot_name)}')">Convert to Tenant</button>
+                                    ${r.status === 'pending_approval' 
+                                        ? `<button class="btn-success btn-sm" onclick="approveRequest(${r.id}, '${escapeHtml(r.first_name)} ${escapeHtml(r.last_name)}', '${escapeHtml(r.email)}', '${escapeHtml(r.phone_number)}', '${escapeHtml(r.hotspot_name)}')">Approve</button>`
+                                        : '<span style="color:#666; font-size:0.8rem;">Verifying OTP...</span>'
+                                    }
                                     <button class="btn-cancel btn-sm" onclick="rejectRequest(${r.id})">Reject</button>
                                 </div>
                             </td>
@@ -483,18 +508,30 @@
         }
 
         function approveRequest(id, name, email, phone, business) {
-            // Pre-fill the Add Tenant modal with lead data
-            document.getElementById('newTenantUser').value = name.replace(/\s+/g, '').toLowerCase() + Math.floor(Math.random() * 100);
-            document.getElementById('newTenantEmail').value = email;
-            document.getElementById('newTenantBusiness').value = business;
-            document.getElementById('newTenantPhone').value = phone;
+            showConfirm(`Approve ${name}? This will send them an email and let you create their account.`, async () => {
+                try {
+                    // 1. Mark as Approved in DB & Send Email
+                    const btn = document.querySelector(`button[onclick^="approveRequest(${id}"]`);
+                    if(btn) btn.innerText = 'Processing...';
 
-            // Show message and open modal
-            showAlert('Lead data copied. Please set a password and create the tenant.', 'success');
-            openModal('addTenantModal');
-
-            // We keep the request for now, or we could delete it upon successful tenant creation.
-            // For now, let's just make it easy to copy.
+                    const res = await fetchAuth(`/api/super/registration-requests/${id}/approve`, { method: 'POST' });
+                    
+                    if (res.ok) {
+                        showAlert('Approved! Now create the tenant account.', 'success');
+                        
+                        // 2. Open Add Tenant Modal Prefilled
+                        document.getElementById('newTenantUser').value = name.replace(/\s+/g, '').toLowerCase() + Math.floor(Math.random() * 100);
+                        document.getElementById('newTenantEmail').value = email;
+                        document.getElementById('newTenantBusiness').value = business;
+                        document.getElementById('newTenantPhone').value = phone;
+                        
+                        fetchRegistrationRequests(); // Refresh list to remove it
+                        openModal('addTenantModal');
+                    } else {
+                        showAlert('Failed to approve.', 'error');
+                    }
+                } catch (e) { console.error(e); }
+            });
         }
 
         async function rejectRequest(id) {
@@ -626,7 +663,12 @@
                                 ${isActive ? statusHtml : ''}
                                 ${!isActive ? statusHtml : ''}
                             </td>
-                            <td>${escapeHtml(t.role)}</td>
+                            <td style="font-weight: bold; color: #4caf50;">
+                                ${Number(t.net_balance).toLocaleString()}
+                            </td>
+                            <td style="color: ${t.sms_balance < 500 ? '#f44336' : '#fff'};">
+                                ${Number(t.sms_balance).toLocaleString()}
+                            </td>
                             <td>
                                 <div>${t.billing_type || 'commission'}</div>
                                 ${t.billing_type === 'subscription'
@@ -635,12 +677,10 @@
                             </td>
                             <td>${new Date(t.created_at).toLocaleDateString()}</td>
                             <td>
-                                <button class="btn-submit btn-sm" onclick="openTenantDetails(${t.id})">View Details</button>
-                            </td>
-                            <td>
                                 <div class="actions-cell">
-                                    ${t.role !== 'super_admin' ? `<button class="btn-cancel btn-sm" onclick="deleteTenant(${t.id})">Delete</button>` : '<div class="btn-sm"></div>'}
-                                    ${t.billing_type === 'subscription' ? `<button class="btn-submit btn-sm" onclick="openRenewModal(${t.id}, '${t.subscription_expiry || ''}')">Renew</button>` : '<div class="btn-sm"></div>'}
+                                    <button class="btn-submit btn-sm" onclick="openTenantDetails(${t.id})">Details</button>
+                                    ${t.role !== 'super_admin' ? `<button class="btn-cancel btn-sm" onclick="deleteTenant(${t.id})">Del</button>` : ''}
+                                    ${t.billing_type === 'subscription' ? `<button class="btn-submit btn-sm" onclick="openRenewModal(${t.id}, '${t.subscription_expiry || ''}')">Renew</button>` : ''}
                                 </div>
                             </td>
                         </tr>

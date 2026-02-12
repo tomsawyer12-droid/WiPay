@@ -46,8 +46,8 @@
                 <label class="remember-me">
                     <input type="checkbox"> Remember me
                 </label>
-                <a href="#" class="forgot-pass" onclick="alert('Please contact support to reset password.')">Forgot
-                    Password?</a>
+                <a href="#" class="forgot-pass" onclick="showError('Please contact support to reset password.')">Forgot
+                     Password?</a>
             </div>
 
             <button type="submit" class="login-btn">Login</button>
@@ -94,12 +94,17 @@
                         btn.style.background = '#2ecc71';
 
                         // Store User Info (Non-sensitive)
-                        localStorage.setItem('wipay_user', data.username);
                         localStorage.setItem('wipay_role', data.role);
+                        localStorage.setItem('wipay_user', JSON.stringify({
+                            username: data.username,
+                            role: data.role
+                        }));
 
                         setTimeout(() => {
                             if (data.role === 'super_admin') {
                                 window.location.href = 'super_dashboard.html';
+                            } else if (data.role === 'agent') {
+                                window.location.href = 'agent.html';
                             } else {
                                 window.location.href = 'dashboard.html';
                             }

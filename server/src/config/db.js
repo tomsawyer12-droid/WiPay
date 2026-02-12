@@ -1,7 +1,5 @@
 const mysql = require('mysql2/promise');
-require('dotenv').config(); // Ensure env vars are loaded
-
-console.log('Database connected.');
+require('dotenv').config(); 
 
 const db = mysql.createPool({
     host: process.env.DB_HOST,
@@ -11,8 +9,12 @@ const db = mysql.createPool({
     port: process.env.DB_PORT || 3306,
     timezone: '+03:00',
     waitForConnections: true,
-    connectionLimit: 100, // Increased for concurrency
-    queueLimit: 0
+    connectionLimit: 100,
+    queueLimit: 0,
+    ssl: {
+        rejectUnauthorized: false
+    },
+    getPublicKey: true
 });
 
 module.exports = db;

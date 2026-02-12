@@ -154,6 +154,86 @@ async function runPendingMigrations() {
   } catch (err) {
     console.error("Migration Error (Cleanup Idempotency):", err);
   }
+
+  try {
+    // Migration 10: Create/Update registration_requests Table
+    const createRegTableQuery = `
+            CREATE TABLE IF NOT EXISTS registration_requests (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                first_name VARCHAR(255) NOT NULL,
+                last_name VARCHAR(255) NOT NULL,
+                email VARCHAR(255) NOT NULL,
+                phone_number VARCHAR(20) NOT NULL,
+                whatsapp_number VARCHAR(20),
+                hotspot_name VARCHAR(255),
+                customer_care_contacts TEXT,
+                device_type VARCHAR(50),
+                login_method VARCHAR(50),
+                address TEXT,
+                system_usage VARCHAR(50),
+                status ENUM('pending', 'pending_otp', 'pending_approval', 'approved', 'rejected') DEFAULT 'pending_otp',
+                otp_code VARCHAR(10),
+                otp_expiry DATETIME,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `;
+    await db.query(createRegTableQuery);
+    console.log("Migration Success: registration_requests table checked/created.");
+
+    // Ensure OTP columns exist if table was created by an older script
+    const columnsToEnsure = [
+        { name: 'otp_code', type: 'VARCHAR(10)' },
+        { name: 'otp_expiry', type: 'DATETIME' }
+    ];
+
+    for (const col of columnsToEnsure) {
+        try {
+            await db.query(`ALTER TABLE registration_requests ADD COLUMN ${col.name} ${col.type}`);
+            console.log(`Migration Success: Added ${col.name} to registration_requests.`);
+        } catch (e) {
+            if (e.code !== 'ER_DUP_FIELDNAME') console.error(`Migration Error (registration_requests ${col.name}):`, e);
+        }
+    }
+
+    // Ensure status enum is updated
+    try {
+        await db.query(`ALTER TABLE registration_requests MODIFY COLUMN status ENUM('pending', 'pending_otp', 'pending_approval', 'approved', 'rejected') DEFAULT 'pending_otp'`);
+        console.log("Migration Success: registration_requests status enum updated.");
+    } catch (e) {
+        console.error("Migration Error (registration_requests status enum):", e);
+    }
+
+  } catch (err) {
+    console.error("Migration Error (Registration Table):", err);
+  }
+
+  try {
+    // Migration 11: Add role and other columns to admins
+    const adminCols = [
+        { name: 'role', type: "ENUM('super_admin', 'admin') DEFAULT 'admin'" },
+        { name: 'email', type: 'VARCHAR(255)' },
+        { name: 'business_name', type: 'VARCHAR(255)' },
+        { name: 'business_phone', type: 'VARCHAR(20)' }
+    ];
+
+    for (const col of adminCols) {
+        try {
+            await db.query(`ALTER TABLE admins ADD COLUMN ${col.name} ${col.type}`);
+            console.log(`Migration Success: Added ${col.name} to admins.`);
+        } catch (e) {
+            if (e.code !== 'ER_DUP_FIELDNAME') {
+                // If it's a modify case (e.g. enum), try modify
+                try {
+                    await db.query(`ALTER TABLE admins MODIFY COLUMN ${col.name} ${col.type}`);
+                } catch (e2) {
+                    console.error(`Migration Error (admins ${col.name}):`, e2);
+                }
+            }
+        }
+    }
+  } catch (err) {
+    console.error("Migration Error (Admin updates):", err);
+  }
 }
 
 module.exports = { runPendingMigrations };

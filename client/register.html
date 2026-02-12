@@ -1,22 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WIPAY | Client Registration</title>
+    <title>WIPAY | Join Us</title>
     <link rel="icon" type="image/png" href="img/favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            --primary-green: #10b981;
-            --primary-dark: #0f172a;
-            --secondary-dark: #1e293b;
-            --text-light: #f8fafc;
-            --accent-blue: #3b82f6;
+            --primary-color: #3b82f6; 
+            --primary-glow: rgba(59, 130, 246, 0.4);
+            --dark-bg: #0f172a;
+            --glass-bg: rgba(30, 41, 59, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+            --success-color: #10b981;
         }
 
         * {
@@ -27,79 +29,101 @@
         }
 
         body {
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-            color: var(--text-light);
+            background: radial-gradient(circle at top left, #1e293b, #0f172a);
+            color: var(--text-main);
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
             padding: 20px;
+            overflow-x: hidden;
         }
+
+        /* Background shapes */
+        .bg-shape {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(80px);
+            z-index: -1;
+            opacity: 0.4;
+        }
+        .bg-1 { top: -100px; left: -100px; width: 500px; height: 500px; background: #3b82f6; }
+        .bg-2 { bottom: -100px; right: -100px; width: 400px; height: 400px; background: #8b5cf6; }
 
         .container {
             width: 100%;
-            max-width: 650px;
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            padding: 40px 30px;
+            max-width: 700px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 40px;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            margin: 20px auto;
+            position: relative;
+            overflow: hidden;
         }
 
-        header {
+        .brand-section {
             text-align: center;
             margin-bottom: 30px;
         }
 
-        header h1 {
-            font-weight: 700;
+        .brand-section img {
+            height: 60px;
+            margin-bottom: 15px;
+            filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.3));
+        }
+
+        .brand-name {
+            font-family: 'Outfit', sans-serif;
             font-size: 2rem;
-            letter-spacing: -0.025em;
-            color: var(--primary-green);
-            margin-bottom: 8px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 5px;
         }
+        
+        .brand-name .text-red { color: #ef4444; }
+        .brand-name .text-blue { color: #3b82f6; }
 
-        header p {
-            color: #94a3b8;
+        .form-header p {
+            color: var(--text-muted);
             font-size: 0.95rem;
-            line-height: 1.5;
         }
 
-        form {
+        /* STEPS */
+        .step-container { display: none; animation: fadeIn 0.4s ease; }
+        .step-container.active { display: block; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Form Grid */
+        .form-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: 1fr 1fr;
             gap: 20px;
         }
-
-        .full-width {
-            grid-column: span 2;
-        }
+        .full-width { grid-column: span 2; }
 
         .input-group {
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            min-width: 0;
-            /* Prevent flex overflow */
+            gap: 6px;
         }
 
-        .input-group label {
-            font-size: 0.85rem;
+        label {
+            font-size: 0.8rem;
             font-weight: 600;
-            color: #94a3b8;
+            color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
 
-        .input-group input,
-        .input-group select,
-        .input-group textarea {
-            background: rgba(15, 23, 42, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            padding: 12px 16px;
+        input, select, textarea {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 14px;
             color: white;
             font-size: 0.95rem;
             transition: all 0.3s ease;
@@ -107,346 +131,320 @@
             width: 100%;
         }
 
-        .input-group input:focus,
-        .input-group select:focus,
-        .input-group textarea:focus {
-            border-color: var(--primary-green);
-            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+        input::placeholder, textarea::placeholder { color: #475569; }
+
+        input:focus, select:focus, textarea:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
             background: rgba(15, 23, 42, 0.8);
         }
 
-        .input-group textarea {
-            resize: vertical;
-            min-height: 80px;
-        }
+        textarea { resize: vertical; min-height: 80px; }
 
-        .helper-text {
-            font-size: 0.75rem;
-            color: #64748b;
-            margin-top: 2px;
-        }
-
-        .captcha-row {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 15px;
-            margin-top: 10px;
-        }
-
-        #captcha-image {
-            background: #f1f5f9;
-            color: #0f172a;
-            font-weight: 800;
-            font-style: italic;
-            letter-spacing: 5px;
-            padding: 10px 15px;
-            border-radius: 8px;
-            user-select: none;
-            font-size: 1.2rem;
-            min-width: 120px;
-            text-align: center;
-            text-decoration: line-through;
-            flex-shrink: 0;
-        }
-
-        .refresh-captcha {
-            cursor: pointer;
-            color: var(--accent-blue);
-            font-size: 1.1rem;
-            transition: transform 0.3s ease;
-            padding: 5px;
-        }
-
-        .refresh-captcha:hover {
-            transform: rotate(180deg);
-        }
-
-        #captchaInput {
-            flex: 1;
-            min-width: 150px;
-        }
-
-        .submit-btn {
-            background: var(--primary-green);
+        /* Buttons */
+        .btn {
+            background: var(--primary-color);
             color: white;
             border: none;
             border-radius: 12px;
             padding: 16px;
             font-size: 1rem;
-            font-weight: 700;
+            font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
-            margin-top: 10px;
+            width: 100%;
             display: flex;
             justify-content: center;
             align-items: center;
             gap: 10px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         }
 
-        .submit-btn:hover {
-            background: #059669;
+        .btn:hover {
+            background: #2563eb;
             transform: translateY(-2px);
-            box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.4);
+            box-shadow: 0 10px 15px -3px var(--primary-glow);
         }
 
-        .submit-btn:active {
-            transform: translateY(0);
-        }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { background: #334155; cursor: not-allowed; transform: none; box-shadow: none; }
 
-        .submit-btn:disabled {
-            background: #334155;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }
-
-        .footer-note {
+        .footer-link {
             text-align: center;
             margin-top: 25px;
-            font-size: 0.85rem;
-            color: #94a3b8;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+        .footer-link a { color: var(--primary-color); text-decoration: none; font-weight: 600; }
+        .footer-link a:hover { text-decoration: underline; }
+
+        /* OTP Input */
+        .otp-inputs {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        .otp-inputs input {
+            width: 50px;
+            height: 50px;
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 700;
+            letter-spacing: 0;
         }
 
-        .footer-note a {
-            color: var(--primary-green);
-            text-decoration: none;
-            font-weight: 600;
-        }
-
-        @media (max-width: 600px) {
-            .container {
-                padding: 30px 20px;
-                border-radius: 15px;
-            }
-
-            form {
-                grid-template-columns: 1fr;
-                gap: 15px;
-            }
-
-            .full-width {
-                grid-column: span 1;
-            }
-
-            header h1 {
-                font-size: 1.75rem;
-            }
-
-            .captcha-row {
-                flex-direction: column;
-                align-items: stretch;
-            }
-
-            #captcha-image {
-                width: 100%;
-                text-align: center;
-            }
-
-            .refresh-captcha {
-                text-align: center;
-                padding: 10px;
-            }
-        }
-
+        /* Messages */
         .status-msg {
             padding: 12px;
             border-radius: 8px;
             margin-bottom: 20px;
             text-align: center;
             font-size: 0.9rem;
-            font-weight: 500;
             display: none;
         }
+        .status-msg.error { background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .status-msg.success { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); }
 
-        .status-msg.success {
-            background: rgba(16, 185, 129, 0.2);
-            color: #34d399;
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            display: block;
-        }
-
-        .status-msg.error {
-            background: rgba(239, 68, 68, 0.2);
-            color: #f87171;
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            display: block;
+        @media (max-width: 600px) {
+            .container { padding: 25px 20px; }
+            .form-grid { grid-template-columns: 1fr; gap: 15px; }
+            .full-width { grid-column: span 1; }
+            .brand-name { font-size: 1.5rem; }
         }
     </style>
 </head>
-
 <body>
+
+    <div class="bg-shape bg-1"></div>
+    <div class="bg-shape bg-2"></div>
+
     <div class="container">
-        <header>
-            <h1>Join UGPAY</h1>
-            <p>Fill in the form to submit a client registration request. We shall get back to you shortly</p>
-        </header>
+        <!-- Logo Header -->
+        <div class="brand-section">
+            <img src="img/favicon.png" alt="UGPAY Logo">
+            <div class="brand-name">
+                <span class="text-red">UG</span><span class="text-blue">PAY</span>
+            </div>
+        </div>
 
         <div id="statusBox" class="status-msg"></div>
 
-        <form id="registrationForm">
-            <div class="input-group">
-                <label for="firstName">First Name</label>
-                <input type="text" id="firstName" name="first_name" placeholder="Enter first name" required>
-            </div>
-            <div class="input-group">
-                <label for="lastName">Last Name</label>
-                <input type="text" id="lastName" name="last_name" placeholder="Enter last name" required>
+        <!-- STEP 1: Registration Form -->
+        <div id="step1" class="step-container active">
+            <div style="text-align: center; margin-bottom: 20px;">
+                <h2 style="font-weight: 600;">Client Registration</h2>
+                <p style="color: var(--text-muted); font-size: 0.9rem;">Join the network of seamless WiFi billing.</p>
             </div>
 
-            <div class="input-group full-width">
-                <label for="email">Email Address</label>
-                <input type="email" id="email" name="email" placeholder="Email Address" required>
-            </div>
+            <form id="regForm">
+                <div class="form-grid">
+                    <div class="input-group">
+                        <label>First Name</label>
+                        <input type="text" name="first_name" placeholder="John" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Last Name</label>
+                        <input type="text" name="last_name" placeholder="Doe" required>
+                    </div>
 
-            <div class="input-group">
-                <label for="phone">Phone Number</label>
-                <input type="tel" id="phone" name="phone_number" placeholder="e.g. 0770000000" pattern="[0-9]{10}"
-                    required>
-                <span class="helper-text">Format: 0700000000 or 0770000000</span>
-            </div>
-            <div class="input-group">
-                <label for="whatsapp">WhatsApp Number</label>
-                <input type="tel" id="whatsapp" name="whatsapp_number" placeholder="WhatsApp Number" pattern="[0-9]{10}"
-                    required>
-                <span class="helper-text">Same format as phone number</span>
-            </div>
+                    <div class="input-group full-width">
+                        <label>Email Address</label>
+                        <input type="email" id="emailInput" name="email" placeholder="john@example.com" required>
+                    </div>
 
-            <div class="input-group full-width">
-                <label for="hotspotName">Hotspot Name</label>
-                <input type="text" id="hotspotName" name="hotspot_name" placeholder="Hotspot Name" required>
-            </div>
+                    <div class="input-group">
+                        <label>Phone Number</label>
+                        <input type="tel" name="phone_number" placeholder="0770000000" pattern="[0-9]{10}" required>
+                    </div>
+                    <div class="input-group">
+                        <label>WhatsApp</label>
+                        <input type="tel" name="whatsapp_number" placeholder="0770000000" pattern="[0-9]{10}" required>
+                    </div>
 
-            <div class="input-group full-width">
-                <label for="careContacts">Customer Care Contacts</label>
-                <input type="text" id="careContacts" name="customer_care_contacts"
-                    placeholder="e.g. 0700000000, 0770000000" required>
-            </div>
+                    <div class="input-group full-width">
+                        <label>Hotspot Name</label>
+                        <input type="text" name="hotspot_name" placeholder="e.g. Metro WiFi" required>
+                    </div>
+                    
+                    <div class="input-group full-width">
+                        <label>Customer Care Contacts</label>
+                        <input type="text" name="customer_care_contacts" placeholder="Contacts displayed to users" required>
+                    </div>
 
-            <div class="input-group">
-                <label for="deviceType">Device Type</label>
-                <select id="deviceType" name="device_type">
-                    <option value="Mikrotik">Mikrotik</option>
-                    <option value="Ubiquiti">Ubiquiti</option>
-                    <option value="Other">Other</option>
-                </select>
-            </div>
-            <div class="input-group">
-                <label for="loginMethod">Login Method</label>
-                <select id="loginMethod" name="login_method">
-                    <option value="Voucher">Voucher (Username = Password)</option>
-                    <option value="Username/Password">Username/Password</option>
-                    <option value="MAC">MAC Authentication</option>
-                </select>
-            </div>
+                    <div class="input-group">
+                        <label>Device Type</label>
+                        <select name="device_type">
+                            <option value="Mikrotik">Mikrotik</option>
+                            <option value="Ubiquiti">Ubiquiti</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label>Login Method</label>
+                        <select name="login_method">
+                            <option value="Voucher">Voucher Mode</option>
+                            <option value="Username/Password">Member Login</option>
+                        </select>
+                    </div>
 
-            <div class="input-group full-width">
-                <label for="address">Address</label>
-                <textarea id="address" name="address" placeholder="Address of the client"></textarea>
-            </div>
+                    <div class="input-group full-width">
+                        <label>Address / Location</label>
+                        <textarea name="address" placeholder="Physical location of the hotspot"></textarea>
+                    </div>
 
-            <div class="input-group full-width">
-                <label for="systemUsage">System Usage</label>
-                <select id="systemUsage" name="system_usage">
-                    <option value="Billing System">Billing System</option>
-                    <option value="VPN">VPN Only</option>
-                    <option value="Hybrid">Hybrid (VPN + Billing)</option>
-                </select>
-            </div>
-
-            <div class="input-group full-width">
-                <label for="captchaInput">Enter the code in the image</label>
-                <div class="captcha-row">
-                    <div id="captcha-image">----</div>
-                    <i class="fas fa-sync refresh-captcha" onclick="generateCaptcha()"></i>
-                    <input type="text" id="captchaInput" placeholder="Code here" style="flex:1" required>
+                    <div class="input-group full-width">
+                        <label>System Usage</label>
+                        <select name="system_usage">
+                            <option value="Billing System">Billing System</option>
+                            <option value="VPN">VPN Only</option>
+                            <option value="Hybrid">Hybrid (VPN + Billing)</option>
+                        </select>
+                    </div>
                 </div>
+
+                <div style="margin-top: 25px;">
+                    <button type="submit" id="submitBtn" class="btn">
+                        <span>Continue</span> <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- STEP 2: OTP Verification -->
+        <div id="step2" class="step-container">
+            <div style="text-align: center; margin-bottom: 25px;">
+                <div style="font-size: 3rem; color: var(--primary-color); margin-bottom: 15px;">
+                    <i class="fas fa-envelope-open-text"></i>
+                </div>
+                <h2>Verify Email</h2>
+                <p style="color: var(--text-muted); margin-top: 10px;">
+                    We sent a 6-digit code to <strong id="displayEmail" style="color:white;"></strong>.<br>
+                    Enter it below to verify your request.
+                </p>
             </div>
 
-            <button type="submit" class="submit-btn full-width" id="submitBtn">
-                <span>Submit Request</span>
-                <i class="fas fa-paper-plane"></i>
-            </button>
-        </form>
+            <div class="otp-inputs">
+                <input type="text" maxlength="6" id="otpCode" placeholder="123456" style="width: 200px; letter-spacing: 5px;">
+            </div>
 
-        <div class="footer-note">
+            <button id="verifyBtn" class="btn" onclick="verifyOTP()">
+                Verify Code
+            </button>
+            
+            <div style="text-align: center; margin-top: 20px;">
+                <button onclick="window.location.reload()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; text-decoration:underline;">Wrong Email? Start Over</button>
+            </div>
+        </div>
+
+        <!-- STEP 3: Success -->
+        <div id="step3" class="step-container">
+            <div style="text-align: center; padding: 40px 0;">
+                <div style="font-size: 4rem; color: var(--success-color); margin-bottom: 20px;">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <h2>Request Submitted!</h2>
+                <p style="color: var(--text-muted); margin: 15px 0 30px; line-height: 1.6;">
+                    Your email has been verified and your registration request is now <strong>Pending Approval</strong>.<br>
+                    We will notify you via email once an admin approves your account.
+                </p>
+                <a href="login_dashboard.html" class="btn">Return to Login</a>
+            </div>
+        </div>
+
+        <div class="footer-link">
             Already have an account? <a href="login_dashboard.html">Login here</a>
         </div>
     </div>
 
     <script src="js/config.js?v=9999"></script>
     <script>
-        let currentCaptcha = "";
-
-        // Simple frontend captcha generator for visual mockup
-        // Real logic will be in the backend route
-        function generateCaptcha() {
-            const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-            let result = "";
-            for (let i = 0; i < 5; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            currentCaptcha = result;
-            document.getElementById('captcha-image').textContent = result;
-            document.getElementById('captchaInput').value = "";
-        }
-
-        generateCaptcha();
-
-        const form = document.getElementById('registrationForm');
-        const submitBtn = document.getElementById('submitBtn');
+        const step1 = document.getElementById('step1');
+        const step2 = document.getElementById('step2');
+        const step3 = document.getElementById('step3');
+        const form = document.getElementById('regForm');
+        const btn = document.getElementById('submitBtn');
         const statusBox = document.getElementById('statusBox');
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const userInput = document.getElementById('captchaInput').value.trim().toUpperCase();
-            if (userInput !== currentCaptcha) {
-                showStatus("Invalid CAPTCHA code. Please try again.", "error");
-                generateCaptcha();
-                return;
-            }
-
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<span>Processing...</span><i class="fas fa-spinner fa-spin"></i>';
-            statusBox.style.display = 'none';
-
-            const formData = new FormData(form);
-            const data = Object.fromEntries(formData.entries());
-
-            try {
-                // We'll create this endpoint soon
-                const response = await fetch(`${CONFIG.API_BASE_URL}/register-request`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    showStatus("Success! Your request has been submitted. We'll contact you shortly.", "success");
-                    form.reset();
-                    generateCaptcha();
-                } else {
-                    showStatus(result.error || "Something went wrong. Please try again.", "error");
-                }
-            } catch (err) {
-                showStatus("Network error. Please check your connection.", "error");
-                console.error(err);
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '<span>Submit Request</span><i class="fas fa-paper-plane"></i>';
-            }
-        });
+        let pendingEmail = '';
 
         function showStatus(msg, type) {
-            statusBox.textContent = msg;
+            statusBox.innerText = msg;
             statusBox.className = `status-msg ${type}`;
             statusBox.style.display = 'block';
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            btn.disabled = true;
+            btn.innerHTML = 'Sending OTP... <i class="fas fa-spinner fa-spin"></i>';
+            statusBox.style.display = 'none';
+
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData.entries());
+            pendingEmail = data.email;
+
+            try {
+                const res = await fetch(`${CONFIG.API_BASE_URL}/register-request`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+
+                if (res.ok) {
+                    // Move to Step 2
+                    document.getElementById('displayEmail').innerText = pendingEmail;
+                    step1.classList.remove('active');
+                    step2.classList.add('active');
+                    showStatus('OTP Sent! Check your inbox.', 'success');
+                } else {
+                    showStatus(result.error || 'Registration failed.', 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                showStatus('Connection error. Please try again.', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Continue <i class="fas fa-arrow-right"></i>';
+            }
+        });
+
+        async function verifyOTP() {
+            const code = document.getElementById('otpCode').value;
+            const vBtn = document.getElementById('verifyBtn');
+
+            if (!code || code.length < 6) return showStatus('Enter valid 6-digit code', 'error');
+
+            vBtn.disabled = true;
+            vBtn.innerText = 'Verifying...';
+
+            try {
+                const res = await fetch(`${CONFIG.API_BASE_URL}/verify-registration-otp`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: pendingEmail, otp: code })
+                });
+                const result = await res.json();
+
+                if (res.ok) {
+                    step2.classList.remove('active');
+                    step3.classList.add('active');
+                    statusBox.style.display = 'none';
+                    document.querySelector('.footer-link').style.display = 'none';
+                } else {
+                    showStatus(result.error || 'Verification failed.', 'error');
+                    vBtn.disabled = false;
+                    vBtn.innerText = 'Verify Code';
+                }
+            } catch (err) {
+                console.error(err);
+                showStatus('Connection error.', 'error');
+                vBtn.disabled = false;
+                vBtn.innerText = 'Verify Code';
+            }
+        }
     </script>
 </body>
-
 </html>

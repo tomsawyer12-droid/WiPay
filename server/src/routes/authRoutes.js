@@ -9,25 +9,51 @@ const { authenticateToken, JWT_SECRET } = require('../middleware/auth');
 router.post('/login', async (req, res) => {
     const { username, password } = req.body;
     try {
-        const [users] = await db.query('SELECT * FROM admins WHERE username = ?', [username]);
-        if (users.length === 0) return res.status(400).json({ error: 'User not found' });
+        // 1. Try Admin Table
+        let [users] = await db.query('SELECT * FROM admins WHERE username = ?', [username]);
+        let role = null;
+        let userData = null;
 
-        const user = users[0];
-        const validPass = await bcrypt.compare(password, user.password_hash);
+        if (users.length > 0) {
+            userData = users[0];
+            role = userData.role;
+        } else {
+            // 2. Try Agent Table
+            let [agents] = await db.query('SELECT * FROM agents WHERE username = ?', [username]);
+            if (agents.length > 0) {
+                userData = agents[0];
+                role = 'agent';
+            }
+        }
+
+        if (!userData) return res.status(400).json({ error: 'User not found' });
+
+        const validPass = await bcrypt.compare(password, userData.password_hash);
         if (!validPass) return res.status(400).json({ error: 'Invalid password' });
 
         // Create Token
-        const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
+        const payload = { 
+            id: userData.id, 
+            username: userData.username, 
+            role: role 
+        };
+        
+        // Add admin_id for agents
+        if (role === 'agent') {
+            payload.admin_id = userData.admin_id;
+        }
+
+        const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
 
         // Set HttpOnly Cookie
         res.cookie('token', token, {
             httpOnly: true,
-            secure: false, // process.env.NODE_ENV === 'production', // Disabled for HTTP IP access
+            secure: false, // process.env.NODE_ENV === 'production', 
             sameSite: 'strict',
-            maxAge: 24 * 60 * 60 * 1000 // 24 hours
+            maxAge: 24 * 60 * 60 * 1000 
         });
 
-        res.json({ token, username: user.username, role: user.role });
+        res.json({ token, username: userData.username, role: role });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server error' });

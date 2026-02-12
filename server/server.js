@@ -14,102 +14,70 @@ const { runPendingMigrations } = require('./src/utils/dbMigration');
 const app = express();
 const server = http.createServer(app);
 
-// Run Migrations
-runPendingMigrations();
+// Run Migrations (Async)
+runPendingMigrations().catch(err => console.error('Migration Error:', err));
 
 const io = new Server(server, {
     cors: {
-        origin: process.env.CORS_ORIGIN || "*", // Use env var in production
+        origin: process.env.CORS_ORIGIN || "*",
         methods: ["GET", "POST"]
     }
 });
 
-const PORT = process.env.PORT || 5002;
+const PORT = parseInt(process.env.PORT) || 5010;
 
 app.set('trust proxy', 1);
 
-// Debug Logging Middleware
-app.use((req, res, next) => {
-    const start = Date.now();
-    res.on('finish', () => {
-        const duration = Date.now() - start;
-        console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} ${res.statusCode} (${duration}ms)`);
-    });
-    next();
-});
-
-// Attach IO to request for routes to use
+// Middleware
 app.use((req, res, next) => {
     req.io = io;
     next();
 });
 
-// --- Security Middleware ---
-
-// 1. Rate Limiting
 const globalLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: process.env.RATE_LIMIT_MAX || 10000, // Configurable limit
-    message: 'Too many requests from this IP, please try again later.',
+    windowMs: 15 * 60 * 1000,
+    max: 10000,
     standardHeaders: true,
     legacyHeaders: false,
 });
 
 const authLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 hour
+    windowMs: 60 * 60 * 1000,
     max: 10,
-    message: 'Too many login attempts, please try again later.',
 });
 
-// 2. Security Headers & CORS
-app.use(helmet({
-    contentSecurityPolicy: false,
-    crossOriginEmbedderPolicy: false,
-    crossOriginOpenerPolicy: false,
-    originAgentCluster: false
-}));
-app.use(cors({
-    origin: true, // Reflects the request origin, allowing all origins + credentials
-    optionsSuccessStatus: 200,
-    credentials: true
-}));
-
-// --- Middleware ---
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
 app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, '../client')));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// --- Routes ---
+// Routes
 const authRoutes = require('./src/routes/authRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 const paymentRoutes = require('./src/routes/paymentRoutes');
 const publicRoutes = require('./src/routes/publicRoutes');
 const superAdminRoutes = require('./src/routes/superAdminRoutes');
 const registrationRoutes = require('./src/routes/registrationRoutes');
+const agentRoutes = require('./src/routes/agentRoutes');
 
-// Apply Limiters
 app.use('/api', globalLimiter);
-app.use('/api/auth/login', authLimiter);
+app.use('/api/login', authLimiter);
 
-// Mount Routes
 app.use('/api', authRoutes);
 app.use('/api', publicRoutes);
 app.use('/api', paymentRoutes);
 app.use('/api', registrationRoutes);
 app.use('/api/super', superAdminRoutes);
 app.use('/api', adminRoutes);
+app.use('/api', agentRoutes);
 
-// Socket.IO Connection Handler
+app.use(express.static(path.join(__dirname, '../client')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 io.on('connection', (socket) => {
-    console.log('Client connected:', socket.id);
-    socket.on('disconnect', () => {
-        console.log('Client disconnected:', socket.id);
-    });
+    socket.on('disconnect', () => {});
 });
 
-// Start Server
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    console.log('--- SERVER RESTARTED: CHECK PAYMENT FIX ACTIVE ---');
 });

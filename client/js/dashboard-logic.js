@@ -100,6 +100,15 @@ window.openEditRouterModal = (id, name, url) => {
     ui.openDashModal('editRouterModal');
 };
 
+window.fetchAgentsList = dh.fetchAgentsList;
+window.createAgent = dh.createAgent;
+window.submitAssignVouchers = dh.submitAssignVouchers;
+window.settleAgentAccount = dh.settleAgentAccount;
+window.openAssignVoucherModal = dh.openAssignVoucherModal;
+
+// --- View Change Watchers moved to initDashboard ---
+
+
 window.fetchDownloadsList = dh.fetchDownloadsList;
 window.fetchBoughtVouchersList = dh.fetchBoughtVouchersList;
 window.fetchMyTransactions = dh.fetchMyTransactions;
@@ -114,27 +123,47 @@ window.viewPackageDetails = (index) => {
     const pkgs = dh.getCurrentPackages();
     const data = pkgs[index];
     if (data) {
-        // Since logic is UI rendering, we can do it here or call a UI helper.
-        // For simplicity, let's inject it here reusing the logic from legacy file, 
-        // essentially moving the template generation to a separate UI function would be cleaner 
-        // but for now let's just implement the bridge.
-        
-        // Actually, we can move this to ui.js or just implement it.
-        // Let's implement minimal version.
-        // Re-implementing the DOM update here for packages is fine.
-        const isActive = data.is_active === 1 || data.is_active === true;
-        const statusColor = isActive ? '#4caf50' : '#f44336';
         const content = document.getElementById('packageDetailContent');
         if(content) {
+            const isActive = data.is_active === 1 || data.is_active === true;
+            const statusColor = isActive ? '#4caf50' : '#f44336';
+            
             content.innerHTML = `
-                <div style="margin-bottom: 20px;">
-                    <strong>${ui.escapeHtml(data.name)}</strong><br>
-                    Price: ${data.price}<br>
-                    Status: <span style="color:${statusColor}">${isActive ? 'ACTIVE':'INACTIVE'}</span>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; text-align: left;">
+                    <div style="grid-column: span 2; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px;">
+                        <div style="color: #888; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">Package Name</div>
+                        <div style="font-size: 1.4rem; font-weight: 700; color: var(--text-main);">${ui.escapeHtml(data.name)}</div>
+                    </div>
+                    
+                    <div>
+                        <div style="color: #888; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">Price</div>
+                        <div style="font-size: 1.1rem; color: var(--primary-color); font-weight: 600;">${Number(data.price).toLocaleString()} UGX</div>
+                    </div>
+
+                    <div>
+                        <div style="color: #888; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">Status</div>
+                        <div style="color:${statusColor}; font-weight: bold; font-size: 1.1rem;">${isActive ? 'ACTIVE':'INACTIVE'}</div>
+                    </div>
+
+                     <div>
+                        <div style="color: #888; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">Category</div>
+                        <div style="font-size: 1rem;">${ui.escapeHtml(data.category_name || '-')}</div>
+                    </div>
+
+                     <div>
+                        <div style="color: #888; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;">Vouchers</div>
+                        <div style="font-size: 1rem;">${data.vouchers_count || 0}</div>
+                    </div>
                 </div>
-                <div style="display:flex; gap:10px;">
-                    <button class="btn-success" onclick="openEditPackageModal(${data.id}, '${data.name.replace(/'/g, "\\'")}', ${data.price}, ${data.category_id})">Edit</button>
-                    <button class="btn-warning" onclick="togglePackageStatus(${data.id}); closeDashModal('packageDetailModal');">${isActive ? 'Deactivate' : 'Activate'}</button>
+                
+                <div class="modal-actions" style="margin-top: 0; gap: 12px;">
+                    <button class="btn-submit" onclick="closeDashModal('packageDetailModal'); openEditPackageModal(${data.id}, '${data.name.replace(/'/g, "\\'")}', ${data.price}, ${data.category_id})">
+                        <i class="fas fa-edit"></i> Edit Package
+                    </button>
+                    ${isActive 
+                        ? `<button class="btn-danger" style="flex: 1;" onclick="togglePackageStatus(${data.id}); closeDashModal('packageDetailModal');">Deactivate</button>` 
+                        : `<button class="btn-success" style="flex: 1;" onclick="togglePackageStatus(${data.id}); closeDashModal('packageDetailModal');">Activate</button>`
+                    }
                 </div>
             `;
             ui.openDashModal('packageDetailModal');
@@ -264,8 +293,18 @@ async function initDashboard() {
     console.log("Initializing Dashboard...");
     vm.initTheme();
 
-    const username = localStorage.getItem('wipay_user');
+    let username = localStorage.getItem('wipay_user');
     if (username) {
+        // Handle both simple string (legacy) and JSON object
+        try {
+            if (username.startsWith('{')) {
+                const userObj = JSON.parse(username);
+                username = userObj.username;
+            }
+        } catch (e) {
+            console.error('Error parsing user data', e);
+        }
+
         const welcomeEl = document.getElementById('welcomeMsg');
         if (welcomeEl) welcomeEl.innerText = `WELCOME, ${username.toUpperCase()} `;
     }
@@ -298,6 +337,7 @@ async function initDashboard() {
         else if (viewName === 'myTransactions') dh.fetchMyTransactions();
         else if (viewName === 'routers') dh.fetchRouters();
         else if (viewName === 'downloads') dh.fetchDownloadsList();
+        else if (viewName === 'agents') dh.fetchAgentsList();
         else if (viewName === 'dashboard') {
              dh.loadStats();
              charts.loadAnalytics();
@@ -321,6 +361,15 @@ async function initDashboard() {
         logoutLink.addEventListener('click', (e) => {
             e.preventDefault();
             ui.openDashModal('logoutConfirmModal');
+        });
+    }
+
+    // Sell Voucher Button Handler
+    const btnSell = document.getElementById('btnSellVoucher');
+    if (btnSell) {
+        btnSell.addEventListener('click', () => {
+             dh.loadPackagesForSell();
+             ui.openDashModal('sellVoucherModal');
         });
     }
 

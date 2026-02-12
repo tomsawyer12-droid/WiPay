@@ -66,10 +66,23 @@
     ></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script>
-      // Check session via API validation (handled in logic.js) or role presence
-      if (!localStorage.getItem("wipay_role")) {
-        window.location.href = "login_dashboard.html";
-      }
+      (function() {
+          const userStr = localStorage.getItem('wipay_user');
+          try {
+              if (userStr) {
+                  const user = userStr.startsWith('{') ? JSON.parse(userStr) : { username: userStr, role: 'admin' };
+                  if (user.role === 'super_admin') {
+                      window.location.href = 'super_dashboard.html';
+                  } else if (user.role === 'agent') {
+                      window.location.href = 'agent.html';
+                  }
+              } else {
+                  window.location.href = 'login_dashboard.html';
+              }
+          } catch (e) {
+              window.location.href = 'login_dashboard.html';
+          }
+      })();
     </script>
   </head>
 
@@ -180,6 +193,16 @@
                   return false;
                 "
                 >Routers</a
+              >
+            </li>
+            <li data-view="agents">
+              <a
+                href="#"
+                onclick="
+                  switchView('agents');
+                  return false;
+                "
+                >Agents <span class="add-btn" onclick="openDashModal('addAgentModal'); event.stopPropagation();">+ Add</span></a
               >
             </li>
             <li data-view="checkSite">
@@ -320,8 +343,24 @@
           </div>
         </header>
 
-        <!-- Logout Confirmation Modal (Replaces JS Alert) -->
-        <!-- Logout Confirmation Modal (Replaces JS Alert) -->
+        <!-- Generic Confirmation Modal -->
+        <div id="confirmGlobalModal" class="dashboard-modal hidden" style="z-index: 10000">
+          <div class="dashboard-modal-content" style="text-align: center; max-width: 400px">
+            <div id="confirmIcon" style="margin-bottom: 16px; font-size: 3rem; color: var(--primary-color)">
+              <i class="fas fa-question-circle"></i>
+            </div>
+            <h3 id="confirmTitle">Are you sure?</h3>
+            <p id="confirmMessage" style="color: var(--text-muted); margin-bottom: 24px">
+              Please confirm this action.
+            </p>
+            <div class="modal-actions">
+              <button id="confirmCancelBtn" class="btn-cancel">Cancel</button>
+              <button id="confirmOkBtn" class="btn-submit">Confirm</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Logout Confirmation Modal -->
         <div
           id="logoutConfirmModal"
           class="dashboard-modal hidden"
@@ -482,6 +521,14 @@
             <div class="stat-card blue">
               <div class="stat-value" id="monthly-trans">0</div>
               <div class="stat-label">Monthly Transacted</div>
+            </div>
+
+            <div class="stat-card cyan">
+               <div class="stat-value" id="agent-sales">0</div>
+               <div class="stat-label">Agent Sales (Settled)</div>
+               <div class="card-footer" onclick="switchView('agents')" style="cursor: pointer;">
+                 Manage Agents <span class="arrow">→</span>
+               </div>
             </div>
 
             <div class="stat-card yellow">
@@ -891,7 +938,9 @@
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>Mikhmon URL</th>
+                  <th>Revenue (Total)</th>
+                  <th>Revenue (24h)</th>
+                  <th>Voucher Stock</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -1004,6 +1053,33 @@
           </div>
         </div>
 
+        <!-- Agents View -->
+        <div id="agentsView" class="view-section hidden">
+          <div class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>Agents Management</h2>
+            <button class="btn-submit" onclick="openDashModal('addAgentModal')">
+              + Add Agent
+            </button>
+          </div>
+          <div class="table-responsive table-scroll-view">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Agent</th>
+                  <th>Phone</th>
+                  <th>Stock</th>
+                  <th>Total Sales</th>
+                  <th>Unsettled</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="agentsTableBody">
+                <!-- JS renders rows here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- Downloads View -->
         <div id="downloadsView" class="view-section hidden">
           <div
@@ -1037,6 +1113,37 @@
 
     <!-- Modals (Add Category/Package) -->
     <!-- Same modals as before... -->
+
+    <!-- Add Agent Modal -->
+    <div id="addAgentModal" class="dashboard-modal hidden">
+      <div class="dashboard-modal-content">
+        <h3>Add New Agent</h3>
+        <input type="text" id="newAgentUsername" placeholder="Username" />
+        <input type="password" id="newAgentPassword" placeholder="Password" />
+        <input type="text" id="newAgentPhone" placeholder="Phone Number (Optional)" />
+        <div class="modal-actions">
+          <button onclick="createAgent()" class="btn-submit">Save Agent</button>
+          <button onclick="closeDashModal('addAgentModal')" class="btn-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Assign Vouchers Modal -->
+    <div id="assignVouchersModal" class="dashboard-modal hidden">
+      <div class="dashboard-modal-content">
+        <h3>Assign Vouchers to Agent</h3>
+        <input type="hidden" id="assignAgentId" />
+        <p>Assign vouchers for a specific package to <strong id="assignAgentName"></strong></p>
+        <select id="assignPackageId" style="margin-top: 10px;">
+          <option value="">Select Package</option>
+        </select>
+        <input type="number" id="assignQuantity" placeholder="Quantity to assign" style="margin-top: 10px;" />
+        <div class="modal-actions">
+          <button onclick="submitAssignVouchers()" class="btn-submit">Assign Stock</button>
+          <button onclick="closeDashModal('assignVouchersModal')" class="btn-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Add Category Modal -->
     <div id="addCategoryModal" class="dashboard-modal hidden">

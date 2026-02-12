@@ -10,6 +10,11 @@ export async function fetchAuth(url, options = {}) {
         options.headers['Content-Type'] = 'application/json';
     }
 
+    // Auto-inject Idempotency-Key for state-changing methods
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method?.toUpperCase()) && !options.headers['Idempotency-Key']) {
+        options.headers['Idempotency-Key'] = crypto.randomUUID ? crypto.randomUUID() : `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    }
+
     try {
         let targetUrl = url;
         if (url.startsWith('/') && typeof CONFIG !== 'undefined' && CONFIG.API_BASE_URL && CONFIG.API_BASE_URL.startsWith('http')) {

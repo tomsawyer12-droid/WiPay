@@ -163,7 +163,7 @@ header p {
 .trial-btn:hover {
     background: var(--primary-green);
     color: #000;
-    box-shadow: 0 0 15px rgba(0, 230, 118, 0.4);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
 }
 
 .voucher-section input {
@@ -202,12 +202,12 @@ header p {
     transition: all 0.2s;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    box-shadow: 0 4px 15px rgba(0, 230, 118, 0.3);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .connect-btn:hover {
     transform: translateY(-2px) scale(1.02);
-    box-shadow: 0 8px 25px rgba(0, 230, 118, 0.5);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
     filter: brightness(1.1);
 }
 
@@ -312,7 +312,7 @@ header p {
 
 .pay-btn-ref:hover {
     background: var(--primary-green);
-    box-shadow: 0 0 10px rgba(0, 230, 118, 0.4);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
 }
 
 /* --- Footer --- */

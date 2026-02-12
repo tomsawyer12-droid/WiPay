@@ -158,6 +158,32 @@ router.get('/admin/routers', async (req, res) => {
     }
 });
 
+router.get('/admin/routers/stats', async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                r.id, 
+                r.name,
+                (SELECT COUNT(*) FROM vouchers v 
+                 JOIN packages p ON v.package_id = p.id 
+                 WHERE p.router_id = r.id AND v.is_used = FALSE AND v.admin_id = ?) as voucher_stock,
+                (SELECT COALESCE(SUM(t.amount - COALESCE(t.fee, 0)), 0) FROM transactions t 
+                 WHERE t.router_id = r.id AND t.status = 'SUCCESS' AND t.admin_id = ?) as total_revenue,
+                (SELECT COALESCE(SUM(t.amount - COALESCE(t.fee, 0)), 0) FROM transactions t 
+                 WHERE t.router_id = r.id AND t.status = 'SUCCESS' AND t.admin_id = ? 
+                 AND t.created_at >= NOW() - INTERVAL 1 DAY) as daily_revenue
+            FROM routers r
+            WHERE r.admin_id = ?
+            ORDER BY r.created_at DESC
+        `;
+        const [rows] = await db.query(query, [req.user.id, req.user.id, req.user.id, req.user.id]);
+        res.json(rows);
+    } catch (err) {
+        console.error('Router Stats Error:', err);
+        res.status(500).json({ error: 'Failed to fetch router stats' });
+    }
+});
+
 router.delete('/admin/routers/:id', async (req, res) => {
     try {
         await db.query('DELETE FROM routers WHERE id = ? AND admin_id = ?', [req.params.id, req.user.id]);
@@ -669,7 +695,7 @@ router.get('/admin/analytics/transactions', async (req, res) => {
             query = `
                 SELECT DATE_FORMAT(created_at, '%a') as label, SUM(amount) as total_amount, COUNT(*) as count
                 FROM transactions
-                WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual' 
+                WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual' AND payment_method != 'cash_agent'
                 AND created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
             `;
             if (req.query.router_id) {
@@ -685,7 +711,7 @@ router.get('/admin/analytics/transactions', async (req, res) => {
             query = `
                 SELECT DATE_FORMAT(created_at, '%d %b') as label, SUM(amount) as total_amount, COUNT(*) as count
                 FROM transactions
-                WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual'
+                WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual' AND payment_method != 'cash_agent'
                 AND created_at >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)
             `;
             if (req.query.router_id) {
@@ -701,7 +727,7 @@ router.get('/admin/analytics/transactions', async (req, res) => {
             query = `
                 SELECT DATE_FORMAT(created_at, '%b %Y') as label, SUM(amount) as total_amount, COUNT(*) as count
                 FROM transactions
-                WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual'
+                WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual' AND payment_method != 'cash_agent'
                 AND created_at >= DATE_SUB(CURDATE(), INTERVAL 11 MONTH)
             `;
             if (req.query.router_id) {
@@ -732,8 +758,8 @@ router.get('/admin/stats', async (req, res) => {
         const { router_id } = req.query;
         const adminId = req.user.id;
 
-        // 1. Finance (Filtered vs Global)
-        let financeWhere = "WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual'";
+        // 1. Finance (Filtered vs Global) - EXCLUDE AGENT SALES (cash_agent)
+        let financeWhere = "WHERE admin_id = ? AND status = 'success' AND payment_method != 'manual' AND payment_method != 'cash_agent'";
         const financeParams = [adminId];
 
         if (router_id) {
@@ -754,8 +780,18 @@ router.get('/admin/stats', async (req, res) => {
 
         const [transStats] = await db.query(statsQuery, financeParams);
 
-        // ALWAYS Global Stats (Balance)
-        const [globalRevRows] = await db.query("SELECT COALESCE(SUM(amount - COALESCE(fee, 0)), 0) as rev FROM transactions WHERE admin_id = ? AND status = 'success'", [adminId]);
+        // 1b. Agent Sales Stats
+        const [agentStats] = await db.query(`
+            SELECT 
+                COALESCE(SUM(amount), 0) as total_agent_sales,
+                COALESCE(SUM(CASE WHEN is_settled = 1 THEN amount ELSE 0 END), 0) as settled_agent_sales,
+                COALESCE(SUM(CASE WHEN is_settled = 0 THEN amount ELSE 0 END), 0) as unsettled_agent_sales
+            FROM transactions
+            WHERE admin_id = ? AND status = 'success' AND payment_method = 'cash_agent'
+        `, [adminId]);
+
+        // ALWAYS Global Stats (Balance) - EXCLUDE AGENT SALES (cash_agent) AND MANUAL
+        const [globalRevRows] = await db.query("SELECT COALESCE(SUM(amount - COALESCE(fee, 0)), 0) as rev FROM transactions WHERE admin_id = ? AND status = 'success' AND payment_method != 'cash_agent' AND payment_method != 'manual'", [adminId]);
         const [withdrawStats] = await db.query('SELECT COALESCE(SUM(amount + COALESCE(fee, 0)), 0) as total_withdrawn FROM withdrawals WHERE admin_id = ? AND (status="success" OR status="pending")', [adminId]);
 
         const globalRevenue = Number(globalRevRows[0].rev);
@@ -814,6 +850,7 @@ router.get('/admin/stats', async (req, res) => {
         res.json({
             finance: {
                 ...transStats[0],
+                ...agentStats[0],
                 gross_revenue: globalRevenue,
                 total_balance: totalBalance,
                 net_balance: netBalance
@@ -987,22 +1024,110 @@ router.get('/admin/subscription-status/:reference', async (req, res) => {
     }
 });
 
-// --- MIKHMON AUTO-LOGIN ---
+// --- AGENT MANAGEMENT (For Admins) ---
 
-router.get('/admin/mikhmon-token', async (req, res) => {
+// Create Agent
+router.post('/admin/agents', async (req, res) => {
+    const { username, password, phone_number } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+
     try {
-        const token = crypto.randomBytes(32).toString('hex');
-        const expiresAt = new Date(Date.now() + 60000); // 1 minute expiry
-
+        const password_hash = await require('bcryptjs').hash(password, 10);
         await db.query(
-            'INSERT INTO mikhmon_tokens (admin_id, token, expires_at) VALUES (?, ?, ?)',
-            [req.user.id, token, expiresAt]
+            'INSERT INTO agents (admin_id, username, password_hash, phone_number) VALUES (?, ?, ?, ?)',
+            [req.user.id, username, password_hash, phone_number]
+        );
+        res.json({ message: 'Agent created successfully' });
+    } catch (err) {
+        if (err.code === 'ER_DUP_ENTRY') return res.status(400).json({ error: 'Username already exists' });
+        console.error('Create Agent Error:', err);
+        res.status(500).json({ error: 'Failed to create agent' });
+    }
+});
+
+// List Agents
+router.get('/admin/agents', async (req, res) => {
+    try {
+        const [rows] = await db.query(`
+            SELECT a.id, a.username, a.phone_number, a.created_at,
+            (SELECT COUNT(*) FROM vouchers v WHERE v.agent_id = a.id AND v.is_used = 0) as stock_count,
+            (SELECT COALESCE(SUM(t.amount), 0) FROM transactions t WHERE t.agent_id = a.id AND t.status = 'success') as total_sales,
+            (SELECT COALESCE(SUM(t.amount), 0) FROM transactions t WHERE t.agent_id = a.id AND t.status = 'success' AND t.is_settled = 0) as unsettled_amount
+            FROM agents a
+            WHERE a.admin_id = ?
+        `, [req.user.id]);
+        res.json(rows);
+    } catch (err) {
+        console.error('List Agents Error:', err);
+        res.status(500).json({ error: 'Failed to list agents' });
+    }
+});
+
+// Assign Vouchers to Agent
+router.post('/admin/agents/:id/assign', async (req, res) => {
+    const { package_id, quantity } = req.body;
+    const agentId = req.params.id;
+    const adminId = req.user.id;
+
+    if (!package_id || !quantity || quantity <= 0) return res.status(400).json({ error: 'Package and valid quantity required' });
+
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+
+        // 1. Verify agent belongs to this admin
+        const [agents] = await connection.query('SELECT id FROM agents WHERE id = ? AND admin_id = ?', [agentId, adminId]);
+        if (agents.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ error: 'Agent not found' });
+        }
+
+        // 2. Lock and Grab unassigned vouchers
+        const [vouchers] = await connection.query(
+            'SELECT id FROM vouchers WHERE package_id = ? AND agent_id IS NULL AND is_used = 0 AND admin_id = ? LIMIT ? FOR UPDATE',
+            [package_id, adminId, parseInt(quantity)]
         );
 
-        res.json({ token });
+        if (vouchers.length < quantity) {
+            await connection.rollback();
+            return res.status(400).json({ error: `Insufficient unassigned vouchers. Only ${vouchers.length} available.` });
+        }
+
+        const voucherIds = vouchers.map(v => v.id);
+
+        // 3. Assign to agent
+        await connection.query(
+            'UPDATE vouchers SET agent_id = ? WHERE id IN (?)',
+            [agentId, voucherIds]
+        );
+
+        await connection.commit();
+        req.io.emit('data_update', { type: 'vouchers' });
+        res.json({ message: `Successfully assigned ${quantity} vouchers to agent` });
+
     } catch (err) {
-        console.error('Mikhmon Token Error:', err);
-        res.status(500).json({ error: 'Failed to generate access token' });
+        await connection.rollback();
+        console.error('Assign Vouchers Error:', err);
+        res.status(500).json({ error: 'Failed to assign vouchers' });
+    } finally {
+        connection.release();
+    }
+});
+
+// Settle Agent Account
+router.post('/admin/agents/:id/settle', async (req, res) => {
+    const agentId = req.params.id;
+    const adminId = req.user.id;
+
+    try {
+        await db.query(
+            'UPDATE transactions SET is_settled = 1, settled_at = NOW() WHERE agent_id = ? AND admin_id = ? AND is_settled = 0',
+            [agentId, adminId]
+        );
+        res.json({ message: 'Agent account settled successfully' });
+    } catch (err) {
+        console.error('Settle Agent Error:', err);
+        res.status(500).json({ error: 'Failed to settle agent account' });
     }
 });
 

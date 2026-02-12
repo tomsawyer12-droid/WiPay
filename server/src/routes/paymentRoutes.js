@@ -140,136 +140,120 @@ router.post('/webhook', idempotencyMiddleware, async (req, res) => {
 
     // --- HANDLE STANDARD TRANSACTIONS ---
     if (status === 'success' || status === 'successful') {
+        const connection = await db.getConnection();
         try {
-            // Check if already handled
-            const [txs] = await db.query('SELECT * FROM transactions WHERE transaction_ref = ?', [reference]);
-            if (txs.length === 0) return res.status(404).send('Transaction not found');
+            await connection.beginTransaction();
+
+            // 1. Check if already handled (Lock row to prevent double-processing)
+            const [txs] = await connection.query('SELECT * FROM transactions WHERE transaction_ref = ? FOR UPDATE', [reference]);
+            if (txs.length === 0) {
+                await connection.rollback();
+                return res.status(404).send('Transaction not found');
+            }
 
             const tx = txs[0];
-            if (tx.status === 'success') return res.status(200).send('Already processed');
-
-            // Fetch Admin Billing Type to calculate Fee
-            // Assign Voucher Logic
-            const [packages] = await db.query('SELECT * FROM packages WHERE id = ?', [tx.package_id]);
-            if (packages.length > 0) {
-                const pkg = packages[0];
-                const SMS_COST = 35;
-
-                // 1. Check SMS Balance
-                const [balRows] = await db.query('SELECT SUM(amount) as balance FROM sms_fees WHERE admin_id = ? AND (status="success" OR status IS NULL)', [pkg.admin_id]);
-                const balance = Number(balRows[0].balance || 0);
-
-                if (balance >= SMS_COST) {
-                    // MARK AS SUCCESS ONLY IF BALANCE IS SUFFICIENT
-                    // Calculate Fee first
-                    let feeMs = 0;
-                    const [admins] = await db.query('SELECT billing_type FROM admins WHERE id = ?', [pkg.admin_id]);
-                    if (admins.length > 0 && admins[0].billing_type === 'commission') {
-                        feeMs = tx.amount * 0.05;
-                    }
-                    await db.query('UPDATE transactions SET status = "success", fee = ?, webhook_data = ? WHERE transaction_ref = ?', [feeMs, JSON.stringify(data), reference]);
-
-                    // Notify Payments Update
-                    req.io.emit('data_update', { type: 'payments' });
-
-                    // 2. Get Available Voucher (Bug Fix: Added query)
-                    const [availableVouchers] = await db.query('SELECT * FROM vouchers WHERE package_id = ? AND is_used = FALSE LIMIT 1', [tx.package_id]);
-
-                    if (availableVouchers.length > 0) {
-                        const voucher = availableVouchers[0];
-
-                        // 3. Mark Voucher Used
-                        await db.query('UPDATE vouchers SET is_used = TRUE WHERE id = ?', [voucher.id]);
-
-                        // 4. Deduct SMS Fee
-                        await db.query('INSERT INTO sms_fees (admin_id, amount, type, description, status) VALUES (?, ?, "usage", ?, "success")',
-                            [pkg.admin_id, -SMS_COST, `Voucher Sale: ${voucher.code}`]);
-
-                        // 5. Store voucher code in transactions
-                        await db.query('UPDATE transactions SET voucher_code = ? WHERE transaction_ref = ?', [voucher.code, reference]);
-
-                        req.io.emit('data_update', { type: 'vouchers' });
-                        req.io.emit('data_update', { type: 'payments' });
-
-                        // 6. Send SMS and Handle Billing
-                        const msg = `Payment Received! Your voucher code: ${voucher.code}. Valid for ${pkg.validity_hours} hrs.`;
-                        const smsSuccess = await sendSMS(tx.phone_number, msg, pkg.admin_id); // Await result
-
-                        if (!smsSuccess) {
-                            console.warn(`[WEBHOOK] SMS Failed for ${reference}. Refunding Admin ${pkg.admin_id}.`);
-                            // REFUND LOGIC
-                            await db.query('INSERT INTO sms_fees (admin_id, amount, type, description, status) VALUES (?, ?, "refund", ?, "success")',
-                                [pkg.admin_id, SMS_COST, `Refund: SMS Failed (Ref: ${reference})`]);
-                        } else {
-                            console.log(`[WEBHOOK] SMS Sent & Billed for ${reference}`);
-                        }
-
-                        req.io.emit('data_update', { type: 'sms' });
-                        req.io.emit('data_update', { type: 'sms_logs' });
-
-
-                        // Email Notification
-                        try {
-                            const [adminRows] = await db.query('SELECT email, username FROM admins WHERE id = ?', [pkg.admin_id]);
-                            if (adminRows.length > 0) {
-                                const moneyBal = await getAdminBalance(pkg.admin_id);
-                                sendPaymentNotification(adminRows[0].email, tx.amount, tx.phone_number, reference, voucher.code, moneyBal, adminRows[0].username);
-
-                                // Low Balance Check (SMS)
-                                const newBalance = balance - SMS_COST;
-                                if (newBalance <= 1000) {
-                                    sendLowSMSBalanceWarning(adminRows[0].email, newBalance, adminRows[0].username);
-                                }
-                            }
-                        } catch (emailErr) { console.error('Email Error:', emailErr); }
-                    } else {
-                        console.error(`[WEBHOOK] No vouchers available for ${reference}`);
-                    }
-                } else {
-                    console.warn(`[WEBHOOK] Insufficient SMS Balance (${balance}) for Admin ${pkg.admin_id}. Transaction SUCCESS but SMS Skipped.`);
-
-                    // Mark as SUCCESS so user gets voucher
-                    let feeMs = 0;
-                    const [admins] = await db.query('SELECT billing_type FROM admins WHERE id = ?', [pkg.admin_id]);
-                    if (admins.length > 0 && admins[0].billing_type === 'commission') {
-                        feeMs = tx.amount * 0.05;
-                    }
-
-                    // Assign Voucher
-                    const [availableVouchers] = await db.query('SELECT * FROM vouchers WHERE package_id = ? AND is_used = FALSE LIMIT 1', [tx.package_id]);
-
-                    if (availableVouchers.length > 0) {
-                        const voucher = availableVouchers[0];
-                        await db.query('UPDATE vouchers SET is_used = TRUE WHERE id = ?', [voucher.id]);
-                        // NO SMS FEE DEDUCTION
-
-                        await db.query('UPDATE transactions SET status = "success", fee = ?, voucher_code = ?, webhook_data = ? WHERE transaction_ref = ?', [feeMs, voucher.code, JSON.stringify(data), reference]);
-
-                        req.io.emit('data_update', { type: 'vouchers' });
-                        req.io.emit('data_update', { type: 'payments' });
-
-                        // Skip SMS Sending, Log it
-                        console.log(`[WEBHOOK] SMS skipped due to low balance.`);
-
-                        // Email Notification (still send email)
-                        try {
-                            const [adminRows] = await db.query('SELECT email, username FROM admins WHERE id = ?', [pkg.admin_id]);
-                            if (adminRows.length > 0) {
-                                const moneyBal = await getAdminBalance(pkg.admin_id);
-                                sendPaymentNotification(adminRows[0].email, tx.amount, tx.phone_number, reference, voucher.code, moneyBal, adminRows[0].username);
-                                sendLowSMSBalanceWarning(adminRows[0].email, balance, adminRows[0].username);
-                            }
-                        } catch (emailErr) { console.error('Email Error:', emailErr); }
-                    } else {
-                        console.error(`[WEBHOOK] No vouchers available for ${reference}`);
-                        await db.query('UPDATE transactions SET status = "failed" WHERE transaction_ref = ?', [reference]);
-                    }
-                }
+            if (tx.status === 'success') {
+                await connection.rollback();
+                return res.status(200).send('Already processed');
             }
+
+            // 2. Fetch Package Info
+            const [packages] = await connection.query('SELECT * FROM packages WHERE id = ?', [tx.package_id]);
+            if (packages.length === 0) {
+                 await connection.rollback();
+                 return res.status(404).send('Package not found');
+            }
+            const pkg = packages[0];
+            const SMS_COST = 35;
+
+            // 3. Calculate Fee
+            let feeMs = 0;
+            const [admins] = await connection.query('SELECT billing_type, username, email FROM admins WHERE id = ?', [tx.admin_id]);
+            const admin = admins[0];
+            
+            if (admin && admin.billing_type === 'commission') {
+                feeMs = tx.amount * 0.05;
+            }
+
+            // 4. Get Available Voucher (ATOMIC LOCK)
+            const [vouchers] = await connection.query('SELECT * FROM vouchers WHERE package_id = ? AND is_used = 0 LIMIT 1 FOR UPDATE', [tx.package_id]);
+
+            if (vouchers.length === 0) {
+                 // No vouchers available - Fail the transaction? Or keep pending?
+                 // Usually better to fail or notify admin. Here we mark failed.
+                 await connection.query('UPDATE transactions SET status = "failed", webhook_data = ? WHERE transaction_ref = ?', [JSON.stringify(data), reference]);
+                 await connection.commit();
+                 console.error(`[WEBHOOK] No vouchers available for ${reference}`);
+                 return res.status(200).send('No Voucher Available');
+            }
+
+            const voucher = vouchers[0];
+
+            // 5. Check SMS Balance
+            const [balRows] = await connection.query('SELECT SUM(amount) as balance FROM sms_fees WHERE admin_id = ? AND (status="success" OR status IS NULL)', [pkg.admin_id]);
+            const balance = Number(balRows[0].balance || 0);
+
+            // 6. Update Voucher & Transaction
+            await connection.query('UPDATE vouchers SET is_used = 1, used_by = ? WHERE id = ?', [tx.phone_number, voucher.id]);
+            
+            // Prepare Common Success Data
+            const successStatus = 'success';
+            await connection.query('UPDATE transactions SET status = ?, fee = ?, voucher_code = ?, webhook_data = ? WHERE transaction_ref = ?', 
+                [successStatus, feeMs, voucher.code, JSON.stringify(data), reference]);
+
+            let smsSent = false;
+
+            if (balance >= SMS_COST) {
+                // Deduct SMS Fee
+                await connection.query('INSERT INTO sms_fees (admin_id, amount, type, description, status) VALUES (?, ?, "usage", ?, "success")',
+                    [pkg.admin_id, -SMS_COST, `Voucher Sale: ${voucher.code}`]);
+                smsSent = true;
+            } else {
+                 console.warn(`[WEBHOOK] Insufficient SMS Balance (${balance}) for Admin ${pkg.admin_id}. SMS Skipped.`);
+                 // We still process the voucher, just don't send SMS (or don't charge for it)
+            }
+
+            await connection.commit();
+
+            // --- POST-COMMIT ACTIONS (Non-Blocking) ---
+            req.io.emit('data_update', { type: 'payments' });
+            req.io.emit('data_update', { type: 'vouchers' });
+            
+            if (smsSent) {
+                req.io.emit('data_update', { type: 'sms' });
+                req.io.emit('data_update', { type: 'sms_logs' });
+                
+                // Send SMS (Async)
+                const msg = `Payment Received! Your voucher code: ${voucher.code}. Valid for ${pkg.validity_hours} hrs.`;
+                sendSMS(tx.phone_number, msg, pkg.admin_id).then(success => {
+                    if (!success) {
+                         // Refund if failed (outside transaction, separate action)
+                         db.query('INSERT INTO sms_fees (admin_id, amount, type, description, status) VALUES (?, ?, "refund", ?, "success")',
+                                [pkg.admin_id, SMS_COST, `Refund: SMS Failed (Ref: ${reference})`]).catch(e => console.error(e));
+                    }
+                });
+            } else {
+                 // Low Balance Warning (Email)
+                 if (admin && admin.email) {
+                     sendLowSMSBalanceWarning(admin.email, balance, admin.username);
+                 }
+            }
+
+            // Email Notification (Always)
+            if (admin && admin.email) {
+                getAdminBalance(tx.admin_id).then(bal => {
+                     sendPaymentNotification(admin.email, tx.amount, tx.phone_number, reference, voucher.code, bal, admin.username);
+                });
+            }
+
             res.status(200).send('OK');
+
         } catch (err) {
+            await connection.rollback();
             console.error('[WEBHOOK] Error:', err);
             res.status(500).send('Server Error');
+        } finally {
+            connection.release();
         }
     } else if (status === 'failed') {
         await db.query('UPDATE transactions SET status = "failed", webhook_data = ? WHERE transaction_ref = ?', [JSON.stringify(data), reference]);
@@ -540,10 +524,10 @@ router.post('/admin/withdraw', authenticateToken, requireIdempotency, async (req
         else if (!formattedPhone.startsWith('+')) formattedPhone = '+' + formattedPhone;
 
         // Balance Check: Total Revenue - (Successful Withdrawals + Pending Withdrawals)
-        const [transStats] = await db.query("SELECT COALESCE(SUM(amount - fee), 0) as total_revenue FROM transactions WHERE status = 'success' AND admin_id = ?", [req.user.id]);
+        const [transStats] = await db.query("SELECT COALESCE(SUM(amount - COALESCE(fee, 0)), 0) as total_revenue FROM transactions WHERE status = 'success' AND admin_id = ?", [req.user.id]);
 
         // Count both success AND pending to prevent race condition double-transfers
-        const [withdrawStats] = await db.query("SELECT COALESCE(SUM(amount), 0) as total_withdrawn FROM withdrawals WHERE (status = 'success' OR status = 'pending') AND admin_id = ?", [req.user.id]);
+        const [withdrawStats] = await db.query("SELECT COALESCE(SUM(amount + COALESCE(fee, 0)), 0) as total_withdrawn FROM withdrawals WHERE (status = 'success' OR status = 'pending') AND admin_id = ?", [req.user.id]);
 
         const currentBalance = Number(transStats[0].total_revenue) - Number(withdrawStats[0].total_withdrawn);
 

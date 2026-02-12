@@ -158,9 +158,42 @@ export function showTableShimmer(tbodyId, colCount) {
     }
 }
 
-export function showConfirm(message, onConfirm) {
-    // Simple wrapper for now, can be upgraded to modal later
-    if (confirm(message)) {
-        onConfirm();
-    }
+export function showConfirm(message, title = 'Are you sure?') {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('confirmGlobalModal');
+        const titleEl = document.getElementById('confirmTitle');
+        const messageEl = document.getElementById('confirmMessage');
+        const okBtn = document.getElementById('confirmOkBtn');
+        const cancelBtn = document.getElementById('confirmCancelBtn');
+
+        if (!modal || !okBtn || !cancelBtn) {
+            // Fallback for unexpected DOM issues
+            resolve(confirm(message));
+            return;
+        }
+
+        if (titleEl) titleEl.innerText = title;
+        if (messageEl) messageEl.innerText = message;
+
+        const cleanup = () => {
+            modal.classList.add('hidden');
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+        };
+
+        const onOk = () => {
+            cleanup();
+            resolve(true);
+        };
+
+        const onCancel = () => {
+            cleanup();
+            resolve(false);
+        };
+
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+
+        modal.classList.remove('hidden');
+    });
 }

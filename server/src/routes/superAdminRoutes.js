@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs");
 const { exec } = require("child_process");
 const db = require("../config/db");
 const { authenticateToken, verifySuperAdmin } = require("../middleware/auth");
+const { sendApprovalEmail } = require("../utils/email");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
@@ -36,6 +37,9 @@ router.get("/tenants", async (req, res) => {
                 a.id, a.username, a.role, a.billing_type, a.subscription_expiry, a.last_active_at, a.created_at,
                 a.email, a.business_name, a.business_phone,
                 a.vpn_ip, a.vpn_private_key, a.vpn_public_key, a.vpn_server_pub, a.vpn_endpoint,
+                (SELECT COALESCE(SUM(t.amount - COALESCE(t.fee, 0)), 0) FROM transactions t WHERE t.admin_id = a.id AND t.status = 'SUCCESS') as gross_revenue,
+                (SELECT COALESCE(SUM(w.amount + COALESCE(w.fee, 0)), 0) FROM withdrawals w WHERE w.admin_id = a.id AND (w.status = 'success' OR w.status = 'pending')) as total_payouts,
+                (SELECT COALESCE(SUM(s.amount), 0) FROM sms_fees s WHERE s.admin_id = a.id) as sms_balance,
                 JSON_ARRAYAGG(
                     JSON_OBJECT(
                         'id', r.id,
@@ -50,18 +54,22 @@ router.get("/tenants", async (req, res) => {
         `;
     const [admins] = await db.query(query);
 
-    // Clean up JSON_ARRAYAGG if no routers (MySQL returns [null] or similar)
-    const cleanedAdmins = admins.map((admin) => ({
-      ...admin,
-      routers:
-        admin.routers && admin.routers[0] && admin.routers[0].id !== null
-          ? admin.routers
-          : [],
-    }));
+    // Clean up JSON_ARRAYAGG and calculate net_balance
+    const cleanedAdmins = admins.map((admin) => {
+        const netBalance = Number(admin.gross_revenue) - Number(admin.total_payouts);
+        return {
+            ...admin,
+            net_balance: Math.max(0, netBalance),
+            routers:
+            admin.routers && admin.routers[0] && admin.routers[0].id !== null
+                ? admin.routers
+                : [],
+        };
+    });
 
     res.json(cleanedAdmins);
   } catch (err) {
-    console.error(err);
+    console.error('Fetch Tenants Error:', err);
     res.status(500).json({ error: "Server error fetching tenants" });
   }
 });
@@ -426,6 +434,28 @@ router.delete("/registration-requests/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete request" });
+  }
+});
+
+// Approve a registration request
+router.post("/registration-requests/:id/approve", async (req, res) => {
+  const id = req.params.id;
+  try {
+    // 1. Get Request Details
+    const [rows] = await db.query("SELECT * FROM registration_requests WHERE id = ?", [id]);
+    if (rows.length === 0) return res.status(404).json({ error: "Request not found" });
+    const request = rows[0];
+
+    // 2. Update Status
+    await db.query("UPDATE registration_requests SET status = 'approved' WHERE id = ?", [id]);
+
+    // 3. Send Email
+    await sendApprovalEmail(request.email);
+
+    res.json({ message: "Request approved and email sent." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to approve request" });
   }
 });
 
